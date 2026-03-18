@@ -26,6 +26,18 @@ const BUILTIN_PRESETS = {
       detectLanguage: false,
       language: null,
     },
+    embed: {
+      provider: 'gemini',
+      model: 'gemini-embedding-2-preview',
+      dimensions: 768,
+      taskTypeDocument: 'RETRIEVAL_DOCUMENT',
+      taskTypeQuery: 'RETRIEVAL_QUERY',
+      sources: {
+        transcript: true,
+        ocr: true,
+        frames: true,
+      },
+    },
   },
 };
 
@@ -99,6 +111,25 @@ function getRuntimeConfig(repoRoot) {
   }
   if (process.env.VIDEO_CLI_TRANSCRIBE_LANGUAGE) {
     merged.transcribe.language = process.env.VIDEO_CLI_TRANSCRIBE_LANGUAGE;
+  }
+
+  if (process.env.VIDEO_CLI_EMBED_PROVIDER) {
+    merged.embed.provider = process.env.VIDEO_CLI_EMBED_PROVIDER;
+  }
+  if (process.env.VIDEO_CLI_EMBED_MODEL) {
+    merged.embed.model = process.env.VIDEO_CLI_EMBED_MODEL;
+  }
+  if (process.env.VIDEO_CLI_EMBED_DIMENSIONS) {
+    merged.embed.dimensions = Number(process.env.VIDEO_CLI_EMBED_DIMENSIONS);
+  }
+  if (process.env.VIDEO_CLI_EMBED_TRANSCRIPT) {
+    merged.embed.sources.transcript = parseBooleanEnv(process.env.VIDEO_CLI_EMBED_TRANSCRIPT);
+  }
+  if (process.env.VIDEO_CLI_EMBED_OCR) {
+    merged.embed.sources.ocr = parseBooleanEnv(process.env.VIDEO_CLI_EMBED_OCR);
+  }
+  if (process.env.VIDEO_CLI_EMBED_FRAMES) {
+    merged.embed.sources.frames = parseBooleanEnv(process.env.VIDEO_CLI_EMBED_FRAMES);
   }
 
   return merged;

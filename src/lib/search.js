@@ -80,6 +80,45 @@ function compareMatches(left, right) {
   return leftAt - rightAt;
 }
 
+function mergeSemanticAndLexical({ semanticMatches, lexicalMatches, topK, threshold }) {
+  const byKey = new Map();
+  const safeThreshold = Number.isFinite(threshold) ? threshold : 0;
+  const safeTopK = Number.isFinite(topK) ? Math.max(1, Math.floor(topK)) : 10;
+
+  for (const item of (semanticMatches || [])) {
+    const key = matchKey(item);
+    const existing = byKey.get(key);
+    if (!existing || item.score > existing.score) {
+      byKey.set(key, { ...item });
+    }
+  }
+
+  const lexicalScore = 0.5;
+  for (const item of (lexicalMatches || [])) {
+    const key = matchKey(item);
+    const existing = byKey.get(key);
+    const score = existing ? Math.max(existing.score, lexicalScore) : lexicalScore;
+    if (!existing) {
+      byKey.set(key, { ...item, score });
+    } else if (score > existing.score) {
+      existing.score = score;
+    }
+  }
+
+  const results = Array.from(byKey.values())
+    .filter(item => item.score >= safeThreshold)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, safeTopK);
+
+  return results;
+}
+
+function matchKey(item) {
+  const at = item.atSec ?? item.startSec ?? 0;
+  return `${item.source}:${at}`;
+}
+
 module.exports = {
   findMatches,
+  mergeSemanticAndLexical,
 };

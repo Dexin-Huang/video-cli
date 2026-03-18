@@ -90,6 +90,19 @@ test('ingest, list, inspect, frame, and clip work end to end', () => {
   const grep = runCli(['grep', ingest.id, 'mock']);
   assert.equal(grep.matchCount >= 3, true);
 
+  const embed = runCli(['embed', ingest.id]);
+  assert.equal(typeof embed.totalEmbeddings, 'number');
+  assert.equal(embed.totalEmbeddings > 0, true);
+  assert.equal(embed.dimensions, 768);
+  assert.equal(typeof embed.sources.transcript, 'number');
+  assert.equal(typeof embed.sources.ocr, 'number');
+  assert.equal(typeof embed.sources.frames, 'number');
+
+  const search = runCli(['search', ingest.id, 'mock']);
+  assert.equal(search.matchCount >= 1, true);
+  assert.equal(typeof search.matches[0].score, 'number');
+  assert.equal(search.mode, 'hybrid');
+
   const frame = runCli(['frame', ingest.id, '--at', '1.25']);
   assert.equal(fs.existsSync(frame.output), true);
 

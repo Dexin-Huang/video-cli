@@ -17,5 +17,15 @@
     "utterances": true,
     "smartFormat": true,
     "punctuate": true
+  },
+  "embed": {
+    "provider": "gemini",
+    "model": "gemini-embedding-2-preview",
+    "dimensions": 768,
+    "sources": {
+      "transcript": true,
+      "ocr": true,
+      "frames": true
+    }
   }
 }

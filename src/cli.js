@@ -27,7 +27,9 @@ const {
 const { readArtifactJson, writeArtifactJson } = require('./lib/artifacts');
 const { createProvider } = require('./lib/providers');
 const { renderBundleMarkdown } = require('./lib/render');
-const { findMatches } = require('./lib/search');
+const { findMatches, mergeSemanticAndLexical } = require('./lib/search');
+const { buildEmbeddings, embedText, rankBySimilarity } = require('./lib/embed');
+const { describeFrames, extractDenseFrames, generateEvalQueries } = require('./lib/describe');
 
 async function main(argv) {
   ensureDataRoot();
@@ -69,6 +71,16 @@ async function main(argv) {
       return runFrame(positionals, flags);
     case 'clip':
       return runClip(positionals, flags);
+    case 'embed':
+      return runEmbed(positionals, flags, config);
+    case 'search':
+      return runSearch(positionals, flags, config);
+    case 'describe':
+      return runDescribe(positionals, flags, config);
+    case 'eval:generate':
+      return runEvalGenerate(positionals, flags, config);
+    case 'eval:run':
+      return runEvalRun(positionals, flags, config);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -89,7 +101,12 @@ function printHelp() {
     '  video-cli brief <video-id> [--limit N] [--output <path>]',
     '  video-cli ocr <video-id> [--limit N] [--provider <name>] [--model <name>]',
     '  video-cli transcribe <video-id> [--chunk-seconds N] [--limit N] [--provider <name>] [--model <name>] [--trim-silence]',
+    '  video-cli embed <video-id> [--dimensions N] [--no-frames] [--no-transcript] [--no-ocr]',
+    '  video-cli search <video-id> <query> [--top N] [--threshold N] [--hybrid]',
     '  video-cli grep <video-id> <query>',
+    '  video-cli describe <video-id> [--interval N] [--model <name>]',
+    '  video-cli eval:generate <video-id> [--model <name>]',
+    '  video-cli eval:run <video-id> [--top N]',
     '  video-cli frame <video-id> --at <seconds> [--output <path>]',
     '  video-cli clip <video-id> --at <seconds> [--pre N] [--post N] [--output <path>]',
   ];
@@ -498,6 +515,357 @@ async function runGrep(positionals) {
     matchCount: matches.length,
     matches,
   });
+}
+
+async function runEmbed(positionals, flags, config) {
+  const id = requirePositional(positionals, 0, '<video-id>');
+  const manifest = loadManifest(id);
+  const embedConfig = { ...config.embed };
+  const dimensions = parseNumberFlag(flags, 'dimensions', embedConfig.dimensions);
+  embedConfig.dimensions = dimensions;
+
+  const sources = { ...embedConfig.sources };
+  if (parseBooleanFlag(flags, 'no-transcript', false)) {
+    sources.transcript = false;
+  }
+  if (parseBooleanFlag(flags, 'no-ocr', false)) {
+    sources.ocr = false;
+  }
+  if (parseBooleanFlag(flags, 'no-frames', false)) {
+    sources.frames = false;
+  }
+  embedConfig.sources = sources;
+
+  const ocr = sources.ocr ? readArtifactJson(id, 'ocr.json') : null;
+  const transcript = sources.transcript ? readArtifactJson(id, 'transcript.json') : null;
+
+  if (sources.ocr && !ocr) {
+    throw new Error('No ocr.json found. Run `video-cli ocr` first.');
+  }
+  if (sources.transcript && !transcript) {
+    throw new Error('No transcript.json found. Run `video-cli transcribe` first.');
+  }
+
+  if (sources.frames) {
+    const { createArtifactPath: getArtifactPath } = require('./lib/store');
+    const withPaths = manifest.watchpoints.map(wp => {
+      const framePath = getArtifactPath(
+        id, 'watchpoints',
+        `watchpoint-${String(wp.atSec.toFixed(3)).replace('.', '_')}.jpg`
+      );
+      return { ...wp, framePath };
+    });
+
+    const allExist = withPaths.every(wp => fs.existsSync(wp.framePath));
+    if (allExist) {
+      manifest.watchpoints = withPaths;
+    } else {
+      try {
+        const selected = manifest.watchpoints.slice();
+        const materialized = materializeWatchpoints(manifest, selected);
+        manifest.watchpoints = materialized;
+      } catch {
+        manifest.watchpoints = withPaths.filter(wp => fs.existsSync(wp.framePath));
+      }
+    }
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY || null;
+  const items = await buildEmbeddings({
+    apiKey,
+    manifest,
+    ocr,
+    transcript,
+    config: embedConfig,
+  });
+
+  const transcriptCount = items.filter(i => i.source === 'transcript').length;
+  const ocrCount = items.filter(i => i.source === 'ocr').length;
+  const frameCount = items.filter(i => i.source === 'frame').length;
+
+  const payload = {
+    id,
+    provider: embedConfig.provider,
+    model: embedConfig.model,
+    dimensions,
+    createdAt: new Date().toISOString(),
+    sources: { transcript: transcriptCount, ocr: ocrCount, frames: frameCount },
+    items,
+  };
+
+  writeArtifactJson(id, 'embeddings.json', payload);
+  printJson({
+    id,
+    provider: embedConfig.provider,
+    model: embedConfig.model,
+    dimensions,
+    totalEmbeddings: items.length,
+    sources: { transcript: transcriptCount, ocr: ocrCount, frames: frameCount },
+  });
+}
+
+async function runSearch(positionals, flags, config) {
+  const id = requirePositional(positionals, 0, '<video-id>');
+  const query = requirePositional(positionals, 1, '<query>');
+  const topK = parseNumberFlag(flags, 'top', 10);
+  const threshold = parseNumberFlag(flags, 'threshold', 0.0);
+  const hybrid = parseBooleanFlag(flags, 'hybrid', true);
+
+  const embeddings = readArtifactJson(id, 'embeddings.json');
+  if (!embeddings || !Array.isArray(embeddings.items) || embeddings.items.length === 0) {
+    throw new Error('No embeddings.json found. Run `video-cli embed` first.');
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY || null;
+  const queryVec = await embedText({
+    apiKey,
+    text: query,
+    model: config.embed.model,
+    taskType: config.embed.taskTypeQuery,
+    dimensions: embeddings.dimensions,
+  });
+
+  const semanticMatches = rankBySimilarity(queryVec, embeddings.items, topK * 2);
+
+  let matches;
+  if (hybrid) {
+    const ocr = readArtifactJson(id, 'ocr.json');
+    const transcript = readArtifactJson(id, 'transcript.json');
+    const lexicalMatches = findMatches({ query, ocr, transcript });
+    matches = mergeSemanticAndLexical({ semanticMatches, lexicalMatches, topK, threshold });
+  } else {
+    matches = semanticMatches
+      .filter(item => item.score >= threshold)
+      .slice(0, topK);
+  }
+
+  printJson({
+    id,
+    query,
+    mode: hybrid ? 'hybrid' : 'semantic',
+    matchCount: matches.length,
+    matches,
+  });
+}
+
+async function runDescribe(positionals, flags, config) {
+  const id = requirePositional(positionals, 0, '<video-id>');
+  const manifest = loadManifest(id);
+  const intervalSec = parseNumberFlag(flags, 'interval', 2);
+  const model = String(flags.model || config.ocr.model);
+  const apiKey = process.env.GEMINI_API_KEY || null;
+
+  const frames = extractDenseFrames(
+    manifest.sourcePath, manifest.media.durationSec, intervalSec, id
+  );
+
+  const descriptions = await describeFrames({
+    apiKey,
+    manifest,
+    frames,
+    model,
+    prompt: [
+      'Describe what you see in this video frame in 2-3 sentences.',
+      'Include: any on-screen text, UI elements, diagrams, people, and actions.',
+      'Be specific about visual details. If there is text, quote it exactly.',
+    ].join(' '),
+  });
+
+  const payload = {
+    id,
+    model,
+    intervalSec,
+    createdAt: new Date().toISOString(),
+    frameCount: descriptions.length,
+    items: descriptions,
+  };
+
+  writeArtifactJson(id, 'descriptions.json', payload);
+  printJson({
+    id,
+    model,
+    intervalSec,
+    frameCount: descriptions.length,
+    durationSec: manifest.media.durationSec,
+  });
+}
+
+async function runEvalGenerate(positionals, flags, config) {
+  const id = requirePositional(positionals, 0, '<video-id>');
+  const model = String(flags.model || config.ocr.model);
+  const apiKey = process.env.GEMINI_API_KEY || null;
+
+  const descriptions = readArtifactJson(id, 'descriptions.json');
+  const transcript = readArtifactJson(id, 'transcript.json');
+
+  if (!descriptions) {
+    throw new Error('No descriptions.json found. Run `video-cli describe` first.');
+  }
+
+  const queries = await generateEvalQueries({
+    apiKey,
+    model,
+    descriptions: descriptions.items,
+    transcript,
+  });
+
+  const payload = {
+    id,
+    model,
+    createdAt: new Date().toISOString(),
+    queryCount: queries.length,
+    queries,
+  };
+
+  writeArtifactJson(id, 'eval-queries.json', payload);
+  printJson({
+    id,
+    model,
+    queryCount: queries.length,
+    queries: queries.map(q => ({
+      query: q.query,
+      modality: q.modality,
+      difficulty: q.difficulty,
+      spanCount: q.groundTruthSpans.length,
+    })),
+  });
+}
+
+async function runEvalRun(positionals, flags, config) {
+  const id = requirePositional(positionals, 0, '<video-id>');
+  const topK = parseNumberFlag(flags, 'top', 5);
+  const apiKey = process.env.GEMINI_API_KEY || null;
+
+  const evalData = readArtifactJson(id, 'eval-queries.json');
+  const embeddings = readArtifactJson(id, 'embeddings.json');
+  const ocr = readArtifactJson(id, 'ocr.json');
+  const transcript = readArtifactJson(id, 'transcript.json');
+
+  if (!evalData) {
+    throw new Error('No eval-queries.json found. Run `video-cli eval:generate` first.');
+  }
+  if (!embeddings) {
+    throw new Error('No embeddings.json found. Run `video-cli embed` first.');
+  }
+
+  const results = [];
+
+  for (const evalQuery of evalData.queries) {
+    const queryVec = await embedText({
+      apiKey,
+      text: evalQuery.query,
+      model: config.embed.model,
+      taskType: config.embed.taskTypeQuery,
+      dimensions: embeddings.dimensions,
+    });
+
+    const semanticMatches = rankBySimilarity(queryVec, embeddings.items, topK * 2);
+    const lexicalMatches = findMatches({ query: evalQuery.query, ocr, transcript });
+    const matches = mergeSemanticAndLexical({
+      semanticMatches,
+      lexicalMatches,
+      topK,
+      threshold: 0,
+    });
+
+    const bestIoU = computeBestIoU(matches, evalQuery.groundTruthSpans);
+    const r1Hit = bestIoU.iou >= 0.5;
+    const r1Loose = bestIoU.iou >= 0.3;
+
+    const reciprocalRank = computeReciprocalRank(matches, evalQuery.groundTruthSpans, 0.3);
+
+    results.push({
+      query: evalQuery.query,
+      modality: evalQuery.modality,
+      difficulty: evalQuery.difficulty,
+      groundTruthSpans: evalQuery.groundTruthSpans,
+      topResult: matches[0] || null,
+      bestIoU: bestIoU.iou,
+      r1_iou50: r1Hit,
+      r1_iou30: r1Loose,
+      reciprocalRank,
+      matchCount: matches.length,
+    });
+  }
+
+  const totalQueries = results.length;
+  const r1_50 = results.filter(r => r.r1_iou50).length / Math.max(1, totalQueries);
+  const r1_30 = results.filter(r => r.r1_iou30).length / Math.max(1, totalQueries);
+  const mrr = results.reduce((s, r) => s + r.reciprocalRank, 0) / Math.max(1, totalQueries);
+  const meanIoU = results.reduce((s, r) => s + r.bestIoU, 0) / Math.max(1, totalQueries);
+
+  const payload = {
+    id,
+    topK,
+    createdAt: new Date().toISOString(),
+    summary: {
+      totalQueries,
+      'R@1_IoU>=0.5': Number(r1_50.toFixed(4)),
+      'R@1_IoU>=0.3': Number(r1_30.toFixed(4)),
+      MRR: Number(mrr.toFixed(4)),
+      meanIoU: Number(meanIoU.toFixed(4)),
+    },
+    results,
+  };
+
+  writeArtifactJson(id, 'eval-results.json', payload);
+  printJson({
+    id,
+    summary: payload.summary,
+    results: results.map(r => ({
+      query: r.query,
+      difficulty: r.difficulty,
+      bestIoU: r.bestIoU,
+      r1_iou50: r.r1_iou50,
+      rr: r.reciprocalRank,
+    })),
+  });
+}
+
+function computeBestIoU(matches, groundTruthSpans) {
+  let best = { iou: 0, matchIdx: -1, spanIdx: -1 };
+
+  for (let mi = 0; mi < matches.length; mi += 1) {
+    const m = matches[mi];
+    const mStart = m.startSec ?? m.atSec ?? 0;
+    const mEnd = m.endSec ?? (mStart + 5);
+
+    for (let si = 0; si < groundTruthSpans.length; si += 1) {
+      const gt = groundTruthSpans[si];
+      const interStart = Math.max(mStart, gt.startSec);
+      const interEnd = Math.min(mEnd, gt.endSec);
+      const intersection = Math.max(0, interEnd - interStart);
+      const union = (mEnd - mStart) + (gt.endSec - gt.startSec) - intersection;
+      const iou = union > 0 ? Number((intersection / union).toFixed(4)) : 0;
+
+      if (iou > best.iou) {
+        best = { iou, matchIdx: mi, spanIdx: si };
+      }
+    }
+  }
+
+  return best;
+}
+
+function computeReciprocalRank(matches, groundTruthSpans, iouThreshold) {
+  for (let i = 0; i < matches.length; i += 1) {
+    const m = matches[i];
+    const mStart = m.startSec ?? m.atSec ?? 0;
+    const mEnd = m.endSec ?? (mStart + 5);
+
+    for (const gt of groundTruthSpans) {
+      const interStart = Math.max(mStart, gt.startSec);
+      const interEnd = Math.min(mEnd, gt.endSec);
+      const intersection = Math.max(0, interEnd - interStart);
+      const union = (mEnd - mStart) + (gt.endSec - gt.startSec) - intersection;
+      const iou = union > 0 ? intersection / union : 0;
+
+      if (iou >= iouThreshold) {
+        return Number((1 / (i + 1)).toFixed(4));
+      }
+    }
+  }
+  return 0;
 }
 
 async function runFrame(positionals, flags) {
