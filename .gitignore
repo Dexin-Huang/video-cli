@@ -28,3 +28,6 @@ Desktop.ini
 .claude/
 .codex/
 SESSION_SOURCES.md
+
+# Research loop outputs (experiment logs, not committed)
+research/results.tsv
