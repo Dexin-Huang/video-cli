@@ -11,6 +11,9 @@ const path = require('node:path');
 const repoRoot = path.resolve(__dirname, '..');
 const dataRoot = path.join(repoRoot, 'data', 'videos');
 
+// Auto-load .env so the agent doesn't need to configure anything
+require(path.join(repoRoot, 'src', 'lib', 'env.js')).loadEnvFile(repoRoot);
+
 // ============================================================
 // PINNED CONSTANTS — do not change
 // ============================================================
