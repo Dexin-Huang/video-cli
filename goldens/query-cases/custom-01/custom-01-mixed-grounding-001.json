@@ -1,0 +1,25 @@
+{
+  "id": "custom-01-mixed-grounding-001",
+  "videoId": "custom-01",
+  "family": "mixed_grounding",
+  "query": "show the tiebreaker chart while the narrator explains the quotient rule",
+  "lookupQueryTranscript": "chart",
+  "lookupQueryOcr": "tiebreakers",
+  "expectedSource": "mixed",
+  "groundingStatus": "grounded-local-artifacts",
+  "expectedSpans": [
+    {
+      "startSec": 163.665,
+      "endSec": 187.86,
+      "toleranceSec": 2
+    }
+  ],
+  "expectedFrames": [
+    {
+      "atSec": 165.24,
+      "toleranceSec": 1.5
+    }
+  ],
+  "maxTopHitDurationSec": 24,
+  "notes": "A strong result should include both the chart frame and the nearby spoken chart walkthrough."
+}

@@ -1,0 +1,57 @@
+{
+  "id": "fixture-video",
+  "provider": "fixture",
+  "model": "fixture",
+  "chunkSeconds": 180,
+  "createdAt": "2026-03-13T00:00:00.000Z",
+  "items": [
+    {
+      "startSec": 0,
+      "endSec": 180,
+      "text": "This long chunk contains every sentence in the clip, but grep should prefer the narrower utterance windows when they exist.",
+      "segments": [
+        {
+          "index": 0,
+          "startSec": 0,
+          "endSec": 180,
+          "durationSec": 180,
+          "audioPath": "fixtures/segment-0.mp3",
+          "text": "This long chunk contains every sentence in the clip, but grep should prefer the narrower utterance windows when they exist.",
+          "wordCount": 24,
+          "utteranceCount": 4
+        }
+      ],
+      "words": [],
+      "utterances": [
+        {
+          "startSec": 8,
+          "endSec": 18,
+          "confidence": 0.99,
+          "speaker": 0,
+          "transcript": "This explainer covers the pool c tiebreaker."
+        },
+        {
+          "startSec": 24.5,
+          "endSec": 40,
+          "confidence": 0.99,
+          "speaker": 0,
+          "transcript": "The quotient formula uses runs allowed divided by defensive outs."
+        },
+        {
+          "startSec": 84,
+          "endSec": 96,
+          "confidence": 0.99,
+          "speaker": 0,
+          "transcript": "Korea reaches the playoffs if the quotient stays lowest."
+        },
+        {
+          "startSec": 120,
+          "endSec": 130,
+          "confidence": 0.99,
+          "speaker": 0,
+          "transcript": "The chart looks confusing, but the game stays close."
+        }
+      ]
+    }
+  ]
+}

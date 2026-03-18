@@ -1,0 +1,22 @@
+{
+  "name": "video-cli",
+  "version": "0.1.0",
+  "description": "Local-first video inspection CLI",
+  "license": "MIT",
+  "type": "commonjs",
+  "bin": {
+    "video-cli": "video-cli.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test",
+    "eval": "node evals/run.js",
+    "eval:json": "node evals/run.js --json",
+    "goldens:check": "node goldens/validate.js",
+    "goldens:check:json": "node goldens/validate.js --json",
+    "goldens:eval": "node goldens/run.js",
+    "goldens:eval:json": "node goldens/run.js --json"
+  }
+}

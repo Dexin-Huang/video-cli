@@ -1,0 +1,18 @@
+{
+  "id": "custom-01-event-localization-001",
+  "videoId": "custom-01",
+  "family": "event_localization",
+  "query": "when do they explain that runs allowed are divided by defensive outs",
+  "lookupQuery": "defensive outs",
+  "expectedSource": "transcript",
+  "groundingStatus": "grounded-local-artifacts",
+  "expectedSpans": [
+    {
+      "startSec": 42.655,
+      "endSec": 73.925,
+      "toleranceSec": 2
+    }
+  ],
+  "maxTopHitDurationSec": 36,
+  "notes": "Grounded from the rerun transcript hit for the defensive-outs equation explanation."
+}

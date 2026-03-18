@@ -1,0 +1,18 @@
+{
+  "id": "anet-01-event-localization-001",
+  "videoId": "anet-01",
+  "family": "event_localization",
+  "query": "when do they add the walnuts to the salad",
+  "lookupQueryTranscript": "half a cup of walnuts",
+  "expectedSource": "transcript",
+  "groundingStatus": "grounded-local-artifacts",
+  "expectedSpans": [
+    {
+      "startSec": 50.265,
+      "endSec": 52.025,
+      "toleranceSec": 1.5
+    }
+  ],
+  "maxTopHitDurationSec": 6,
+  "notes": "Aligned to the narrated walnut-addition moment in the ActivityNet salad clip."
+}

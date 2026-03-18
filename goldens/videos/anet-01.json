@@ -1,0 +1,26 @@
+{
+  "id": "anet-01",
+  "title": "Maple Walnut Apple Salad : Fresh Salads",
+  "status": "annotated",
+  "sourceType": "public",
+  "sourceDataset": "ActivityNetCaptions",
+  "sourceSplit": "validation",
+  "sourceRef": "https://www.youtube.com/watch?v=_15t4WTR19s",
+  "datasetVideoId": "v__15t4WTR19s",
+  "localVideoPath": ".tmp_public/_15t4WTR19s.mp4",
+  "artifactVideoId": "15t4wtr19s-48a8de03b7",
+  "annotationStatus": "grounded-local-artifacts",
+  "durationSec": 238.213515,
+  "modalityFocus": [
+    "temporal",
+    "transcript",
+    "visual"
+  ],
+  "requiredQueryFamilies": [
+    "event_localization",
+    "transcript_paraphrase",
+    "before_after_context",
+    "visual_state"
+  ],
+  "notes": "Grounded from local Deepgram transcript artifacts and aligned to ActivityNet salad-preparation moments that are recoverable from narration."
+}

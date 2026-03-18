@@ -1,0 +1,18 @@
+{
+  "id": "yc2-02-visual-state-001",
+  "videoId": "yc2-02",
+  "family": "visual_state",
+  "query": "show when the bacon is cooking in the hot pan",
+  "lookupQueryTranscript": "hot pan first thing",
+  "expectedSource": "clip",
+  "groundingStatus": "grounded-local-artifacts",
+  "expectedSpans": [
+    {
+      "startSec": 37.34,
+      "endSec": 39.74,
+      "toleranceSec": 1.5
+    }
+  ],
+  "maxTopHitDurationSec": 8,
+  "notes": "A visible cooking-action query currently anchored through narration rather than OCR."
+}

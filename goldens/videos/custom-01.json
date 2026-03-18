@@ -1,0 +1,24 @@
+{
+  "id": "custom-01",
+  "title": "Korea advances to WBC playoffs because of this bizarre rule - explained",
+  "status": "annotated",
+  "sourceType": "custom",
+  "sourceDataset": "custom",
+  "sourceRef": "https://www.youtube.com/watch?v=0myEI1Ht_4U",
+  "localVideoPath": ".tmp_live/0myEI1Ht_4U.mp4",
+  "artifactVideoId": "0myei1ht-4u-426a2b963e",
+  "annotationStatus": "grounded-local-artifacts",
+  "durationSec": 438.764,
+  "modalityFocus": [
+    "ocr",
+    "visual",
+    "transcript"
+  ],
+  "requiredQueryFamilies": [
+    "ocr_exact",
+    "mixed_grounding",
+    "event_localization",
+    "before_after_context"
+  ],
+  "notes": "Grounded from local OCR and Deepgram transcript artifacts created on 2026-03-13 from the cached WBC video."
+}

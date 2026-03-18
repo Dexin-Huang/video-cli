@@ -1,0 +1,30 @@
+# Data & artifacts
+data/
+evals/results/
+goldens/results/
+
+# Temp directories
+.tmp_*/
+
+# Dependencies
+node_modules/
+
+# Environment
+.env
+
+# External references
+reference/
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Editor / IDE
+.vscode/
+.idea/
+
+# Claude / Codex sessions
+.claude/
+.codex/
+SESSION_SOURCES.md

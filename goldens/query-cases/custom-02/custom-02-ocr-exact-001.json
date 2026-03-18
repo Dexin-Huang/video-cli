@@ -1,0 +1,17 @@
+{
+  "id": "custom-02-ocr-exact-001",
+  "videoId": "custom-02",
+  "family": "ocr_exact",
+  "query": "find the frame that labels input hidden and output",
+  "lookupQuery": "node layers",
+  "expectedSource": "ocr",
+  "groundingStatus": "grounded-local-artifacts",
+  "expectedFrames": [
+    {
+      "atSec": 27.102,
+      "toleranceSec": 1.5
+    }
+  ],
+  "maxTopHitDurationSec": null,
+  "notes": "Grounded from the OCR hit with INPUT / HIDDEN / OUTPUT on the IBM Cloud slide."
+}

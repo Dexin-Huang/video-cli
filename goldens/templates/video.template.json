@@ -1,0 +1,24 @@
+{
+  "id": "custom-01",
+  "title": "Example product-aligned video",
+  "status": "selected",
+  "sourceType": "custom",
+  "sourceDataset": "custom",
+  "sourceRef": null,
+  "localVideoPath": "goldens/assets/custom-01.mp4",
+  "artifactVideoId": null,
+  "annotationStatus": "seeded",
+  "durationSec": 312.4,
+  "modalityFocus": [
+    "transcript",
+    "ocr",
+    "visual"
+  ],
+  "requiredQueryFamilies": [
+    "ocr_exact",
+    "mixed_grounding",
+    "event_localization",
+    "before_after_context"
+  ],
+  "notes": "Dense scoreboard overlays and repeated critical moments."
+}

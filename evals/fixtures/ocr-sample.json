@@ -1,0 +1,22 @@
+{
+  "id": "fixture-video",
+  "provider": "fixture",
+  "model": "fixture",
+  "createdAt": "2026-03-13T00:00:00.000Z",
+  "items": [
+    {
+      "atSec": 0,
+      "kind": "anchor",
+      "reason": "start",
+      "framePath": "fixtures/watchpoint-0.jpg",
+      "text": "TOKYO DOME"
+    },
+    {
+      "atSec": 24.5,
+      "kind": "scene",
+      "reason": "scoreboard",
+      "framePath": "fixtures/watchpoint-24.jpg",
+      "text": "POOL C LIVE SCOREBOARD"
+    }
+  ]
+}

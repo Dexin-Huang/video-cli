@@ -1,0 +1,17 @@
+{
+  "id": "custom-01-ocr-exact-001",
+  "videoId": "custom-01",
+  "family": "ocr_exact",
+  "query": "find the tiebreakers chart frame",
+  "lookupQuery": "tiebreakers",
+  "expectedSource": "ocr",
+  "groundingStatus": "grounded-local-artifacts",
+  "expectedFrames": [
+    {
+      "atSec": 165.24,
+      "toleranceSec": 1.5
+    }
+  ],
+  "maxTopHitDurationSec": null,
+  "notes": "Grounded from the OCR hit containing the full tiebreaker chart."
+}

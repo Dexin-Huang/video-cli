@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://video-cli.local/schemas/goldens/video-manifest.schema.json",
+  "title": "Golden Video Manifest",
+  "type": "object",
+  "required": [
+    "id",
+    "title",
+    "status",
+    "sourceType",
+    "sourceDataset",
+    "durationSec",
+    "modalityFocus",
+    "requiredQueryFamilies"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "planned",
+        "selected",
+        "annotated",
+        "verified"
+      ]
+    },
+    "sourceType": {
+      "type": "string",
+      "enum": [
+        "public",
+        "custom"
+      ]
+    },
+    "sourceDataset": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceRef": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "localVideoPath": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "durationSec": {
+      "type": "number",
+      "minimum": 1
+    },
+    "modalityFocus": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": [
+          "transcript",
+          "ocr",
+          "visual",
+          "temporal"
+        ]
+      }
+    },
+    "requiredQueryFamilies": {
+      "type": "array",
+      "minItems": 4,
+      "items": {
+        "type": "string"
+      }
+    },
+    "notes": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "additionalProperties": true
+}

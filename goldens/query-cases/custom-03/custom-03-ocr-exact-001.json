@@ -1,0 +1,17 @@
+{
+  "id": "custom-03-ocr-exact-001",
+  "videoId": "custom-03",
+  "family": "ocr_exact",
+  "query": "find the frame where Repeat Grid is visible in Adobe XD",
+  "lookupQuery": "Repeat Grid",
+  "expectedSource": "ocr",
+  "groundingStatus": "grounded-local-artifacts",
+  "expectedFrames": [
+    {
+      "atSec": 89.792,
+      "toleranceSec": 1.5
+    }
+  ],
+  "maxTopHitDurationSec": null,
+  "notes": "Grounded from the OCR hit showing the Repeat Grid panel and mobile layout."
+}

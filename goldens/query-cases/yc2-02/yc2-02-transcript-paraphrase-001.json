@@ -1,0 +1,18 @@
+{
+  "id": "yc2-02-transcript-paraphrase-001",
+  "videoId": "yc2-02",
+  "family": "transcript_paraphrase",
+  "query": "when do they build the chowder base with onions and bacon grease",
+  "lookupQueryTranscript": "bacon grease",
+  "expectedSource": "transcript",
+  "groundingStatus": "grounded-local-artifacts",
+  "expectedSpans": [
+    {
+      "startSec": 50.135,
+      "endSec": 57.095,
+      "toleranceSec": 2
+    }
+  ],
+  "maxTopHitDurationSec": 10,
+  "notes": "Anchored to the narrated move from cooked bacon into onions and bacon-grease seasoning."
+}

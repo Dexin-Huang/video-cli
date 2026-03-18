@@ -1,0 +1,423 @@
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+
+const { createArtifactPath } = require('./store');
+
+function getFileIdentity(filePath) {
+  const stats = fs.statSync(filePath);
+  return {
+    path: filePath,
+    sizeBytes: stats.size,
+    mtimeMs: stats.mtimeMs,
+    idSeed: `${filePath}|${stats.size}|${stats.mtimeMs}`,
+  };
+}
+
+function buildVideoId(identity) {
+  const base = path.basename(identity.path, path.extname(identity.path))
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 32) || 'video';
+  const hash = crypto.createHash('sha1').update(identity.idSeed).digest('hex').slice(0, 10);
+  return `${base}-${hash}`;
+}
+
+function probeVideo(filePath) {
+  const result = runProcess('ffprobe', [
+    '-v', 'error',
+    '-print_format', 'json',
+    '-show_format',
+    '-show_streams',
+    filePath,
+  ]);
+  return JSON.parse(result.stdout);
+}
+
+function detectSceneChanges(filePath, threshold) {
+  const nullSink = os.platform() === 'win32' ? 'NUL' : '/dev/null';
+  const filter = `select='gt(scene,${threshold})',showinfo`;
+  const result = runProcess('ffmpeg', [
+    '-hide_banner',
+    '-i', filePath,
+    '-filter:v', filter,
+    '-vsync', 'vfr',
+    '-f', 'null',
+    nullSink,
+  ], { allowFailure: true });
+
+  const matches = [...result.stderr.matchAll(/pts_time:([0-9]+(?:\.[0-9]+)?)/g)];
+  const seen = new Set();
+  const points = [];
+
+  for (const match of matches) {
+    const value = Number(match[1]);
+    if (!Number.isFinite(value)) {
+      continue;
+    }
+    const rounded = Number(value.toFixed(3));
+    const key = rounded.toFixed(3);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    points.push(rounded);
+  }
+
+  points.sort((left, right) => left - right);
+  return points;
+}
+
+function pickWatchpoints(durationSec, changePointsSec, requestedCount) {
+  const maxCount = Math.max(3, Math.min(24, Math.floor(requestedCount || 12)));
+  const byKey = new Map();
+
+  const add = (atSec, kind, reason) => {
+    if (!Number.isFinite(atSec) || atSec < 0) {
+      return;
+    }
+    const bounded = durationSec > 0 ? Math.min(atSec, durationSec) : atSec;
+    const key = bounded.toFixed(3);
+    if (!byKey.has(key)) {
+      byKey.set(key, {
+        atSec: Number(key),
+        kind,
+        reason,
+      });
+    }
+  };
+
+  add(0, 'anchor', 'start');
+  if (durationSec > 0) {
+    add(durationSec / 2, 'anchor', 'middle');
+    add(Math.max(durationSec - 0.01, 0), 'anchor', 'end');
+  }
+
+  for (const point of changePointsSec) {
+    add(point, 'scene', 'scene-change');
+  }
+
+  const current = Array.from(byKey.values()).sort((left, right) => left.atSec - right.atSec);
+  const remainingSlots = maxCount - current.length;
+
+  if (durationSec > 0 && remainingSlots > 0) {
+    for (let index = 1; index <= remainingSlots; index += 1) {
+      const fraction = index / (remainingSlots + 1);
+      add(durationSec * fraction, 'uniform', 'coverage');
+    }
+  }
+
+  let items = Array.from(byKey.values()).sort((left, right) => left.atSec - right.atSec);
+  if (items.length <= maxCount) {
+    return items;
+  }
+
+  const keep = [];
+  keep.push(items[0]);
+  if (items.length > 1) {
+    const interiorCount = maxCount - 2;
+    for (let index = 1; index <= interiorCount; index += 1) {
+      const position = Math.round((index * (items.length - 1)) / (interiorCount + 1));
+      keep.push(items[position]);
+    }
+    keep.push(items[items.length - 1]);
+  }
+
+  items = [];
+  const seen = new Set();
+  for (const item of keep) {
+    const key = item.atSec.toFixed(3);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    items.push(item);
+  }
+  items.sort((left, right) => left.atSec - right.atSec);
+  return items;
+}
+
+function extractFrame(sourcePath, atSec, outputPath) {
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  runProcess('ffmpeg', [
+    '-y',
+    '-ss', String(atSec),
+    '-i', sourcePath,
+    '-frames:v', '1',
+    '-q:v', '2',
+    outputPath,
+  ]);
+}
+
+function extractAudioChunk(sourcePath, startSec, durationSec, outputPath) {
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  runProcess('ffmpeg', [
+    '-y',
+    '-ss', String(startSec),
+    '-i', sourcePath,
+    '-t', String(durationSec),
+    '-vn',
+    '-ac', '1',
+    '-ar', '16000',
+    '-b:a', '32k',
+    outputPath,
+  ]);
+}
+
+function detectSilences(sourcePath, startSec, durationSec, options = {}) {
+  const minSilenceSec = Number.isFinite(options.minSilenceSec) ? options.minSilenceSec : 1.5;
+  const silenceNoiseDb = Number.isFinite(options.silenceNoiseDb) ? options.silenceNoiseDb : -35;
+  const nullSink = os.platform() === 'win32' ? 'NUL' : '/dev/null';
+  const filter = `silencedetect=n=${silenceNoiseDb}dB:d=${minSilenceSec}`;
+
+  const args = [
+    '-hide_banner',
+    '-ss', String(startSec),
+    '-i', sourcePath,
+    '-t', String(durationSec),
+    '-vn',
+    '-af', filter,
+    '-f', 'null',
+    nullSink,
+  ];
+
+  const result = runProcess('ffmpeg', args, { allowFailure: true });
+  return parseSilenceEvents(result.stderr, durationSec);
+}
+
+function buildSpeechSegments(startSec, endSec, silences, options = {}) {
+  const durationSec = Math.max(0, endSec - startSec);
+  const padSec = Number.isFinite(options.padSec) ? Math.max(0, options.padSec) : 0.25;
+  const mergeGapSec = Number.isFinite(options.mergeGapSec) ? Math.max(0, options.mergeGapSec) : 0.35;
+  const silentRanges = (silences || [])
+    .filter(item => Number.isFinite(item.startSec) && Number.isFinite(item.endSec) && item.endSec > item.startSec)
+    .slice()
+    .sort((left, right) => left.startSec - right.startSec);
+
+  const speechRanges = [];
+  let cursor = 0;
+
+  for (const silence of silentRanges) {
+    const silenceStartSec = Math.max(0, Math.min(durationSec, silence.startSec));
+    const silenceEndSec = Math.max(silenceStartSec, Math.min(durationSec, silence.endSec));
+    if (silenceStartSec > cursor) {
+      speechRanges.push({
+        startSec: cursor,
+        endSec: silenceStartSec,
+      });
+    }
+    cursor = Math.max(cursor, silenceEndSec);
+  }
+
+  if (cursor < durationSec) {
+    speechRanges.push({
+      startSec: cursor,
+      endSec: durationSec,
+    });
+  }
+
+  const padded = speechRanges
+    .map(item => ({
+      startSec: Math.max(0, item.startSec - padSec),
+      endSec: Math.min(durationSec, item.endSec + padSec),
+    }))
+    .filter(item => item.endSec - item.startSec > 0.05);
+
+  const merged = [];
+  for (const item of padded) {
+    const previous = merged[merged.length - 1];
+    if (!previous) {
+      merged.push({ ...item });
+      continue;
+    }
+
+    if (item.startSec - previous.endSec <= mergeGapSec) {
+      previous.endSec = Math.max(previous.endSec, item.endSec);
+      continue;
+    }
+
+    merged.push({ ...item });
+  }
+
+  return merged.map(item => ({
+    startSec: roundToMillis(startSec + item.startSec),
+    endSec: roundToMillis(startSec + item.endSec),
+    durationSec: roundToMillis(item.endSec - item.startSec),
+  }));
+}
+
+function extractClip(manifest, atSec, preSec, postSec, outputPath) {
+  const startSec = Math.max(0, atSec - preSec);
+  const durationSec = Math.max(0.1, preSec + postSec);
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+
+  const args = [
+    '-y',
+    '-ss', String(startSec),
+    '-i', manifest.sourcePath,
+    '-t', String(durationSec),
+    '-map', '0:v:0?',
+  ];
+
+  if (manifest.media.audio) {
+    args.push('-map', '0:a:0?');
+  } else {
+    args.push('-an');
+  }
+
+  args.push('-c:v', 'libx264', '-pix_fmt', 'yuv420p');
+  if (manifest.media.audio) {
+    args.push('-c:a', 'aac');
+  }
+  args.push(outputPath);
+
+  runProcess('ffmpeg', args);
+}
+
+function materializeWatchpoints(manifest, watchpoints) {
+  return watchpoints.map(item => {
+    const output = createArtifactPath(
+      manifest.id,
+      'watchpoints',
+      `watchpoint-${String(item.atSec.toFixed(3)).replace('.', '_')}.jpg`
+    );
+
+    if (!fs.existsSync(output)) {
+      extractFrame(manifest.sourcePath, item.atSec, output);
+    }
+
+    return {
+      ...item,
+      framePath: output,
+    };
+  });
+}
+
+function buildEvidenceBundle(manifest, limit) {
+  const selected = manifest.watchpoints.slice(0, limit);
+  const materialized = materializeWatchpoints(manifest, selected);
+  const watchpoints = addCoverageWindows(materialized, manifest.media.durationSec);
+
+  return {
+    id: manifest.id,
+    sourceName: manifest.sourceName,
+    sourcePath: manifest.sourcePath,
+    durationSec: manifest.media.durationSec,
+    sceneChangeCount: manifest.sceneDetection.changePointsSec.length,
+    watchpoints,
+    suggestedQuestions: [
+      'What happens over the full arc of the video?',
+      'Which watchpoints seem visually important or repeated?',
+      'Which neighboring windows should be clipped for more detail?',
+    ],
+  };
+}
+
+function addCoverageWindows(watchpoints, durationSec) {
+  return watchpoints.map((item, index) => {
+    const previous = watchpoints[index - 1];
+    const next = watchpoints[index + 1];
+    const windowStartSec = previous ? roundToMillis((previous.atSec + item.atSec) / 2) : 0;
+    const windowEndSec = next
+      ? roundToMillis((item.atSec + next.atSec) / 2)
+      : roundToMillis(durationSec);
+
+    return {
+      ...item,
+      windowStartSec,
+      windowEndSec,
+    };
+  });
+}
+
+function roundToMillis(value) {
+  return Number(value.toFixed(3));
+}
+
+function parseSilenceEvents(stderr, durationSec) {
+  const silences = [];
+  const lines = String(stderr || '').split(/\r?\n/);
+  let pendingStartSec = null;
+
+  for (const line of lines) {
+    const startMatch = line.match(/silence_start:\s*([0-9]+(?:\.[0-9]+)?)/);
+    if (startMatch) {
+      pendingStartSec = Number(startMatch[1]);
+      continue;
+    }
+
+    const endMatch = line.match(/silence_end:\s*([0-9]+(?:\.[0-9]+)?)\s*\|\s*silence_duration:\s*([0-9]+(?:\.[0-9]+)?)/);
+    if (!endMatch) {
+      continue;
+    }
+
+    const endSec = Number(endMatch[1]);
+    const fallbackStartSec = Math.max(0, endSec - Number(endMatch[2]));
+    const startSec = pendingStartSec === null ? fallbackStartSec : pendingStartSec;
+    pendingStartSec = null;
+
+    const boundedStartSec = roundToMillis(Math.max(0, Math.min(durationSec, startSec)));
+    const boundedEndSec = roundToMillis(Math.max(boundedStartSec, Math.min(durationSec, endSec)));
+    if (boundedEndSec <= boundedStartSec) {
+      continue;
+    }
+
+    silences.push({
+      startSec: boundedStartSec,
+      endSec: boundedEndSec,
+      durationSec: roundToMillis(boundedEndSec - boundedStartSec),
+    });
+  }
+
+  if (pendingStartSec !== null && durationSec > pendingStartSec) {
+    const boundedStartSec = roundToMillis(Math.max(0, Math.min(durationSec, pendingStartSec)));
+    const boundedEndSec = roundToMillis(durationSec);
+    silences.push({
+      startSec: boundedStartSec,
+      endSec: boundedEndSec,
+      durationSec: roundToMillis(boundedEndSec - boundedStartSec),
+    });
+  }
+
+  return silences;
+}
+
+function runProcess(command, args, options = {}) {
+  const result = spawnSync(command, args, {
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  if (result.status !== 0 && !options.allowFailure) {
+    const details = result.stderr || result.stdout || `Exit code ${result.status}`;
+    throw new Error(`${command} failed: ${details.trim()}`);
+  }
+
+  return {
+    status: result.status,
+    stdout: result.stdout || '',
+    stderr: result.stderr || '',
+  };
+}
+
+module.exports = {
+  buildEvidenceBundle,
+  buildSpeechSegments,
+  buildVideoId,
+  detectSilences,
+  detectSceneChanges,
+  extractAudioChunk,
+  extractClip,
+  extractFrame,
+  getFileIdentity,
+  materializeWatchpoints,
+  pickWatchpoints,
+  probeVideo,
+};

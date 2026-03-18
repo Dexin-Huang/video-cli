@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://video-cli.local/schemas/goldens/query-case.schema.json",
+  "title": "Golden Query Case",
+  "type": "object",
+  "required": [
+    "id",
+    "videoId",
+    "family",
+    "query",
+    "expectedSource"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$"
+    },
+    "videoId": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$"
+    },
+    "family": {
+      "type": "string",
+      "enum": [
+        "transcript_exact",
+        "transcript_paraphrase",
+        "event_localization",
+        "before_after_context",
+        "ocr_exact",
+        "visual_state",
+        "mixed_grounding"
+      ]
+    },
+    "query": {
+      "type": "string",
+      "minLength": 1
+    },
+    "lookupQuery": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "lookupQueryTranscript": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "lookupQueryOcr": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "expectedSource": {
+      "type": "string",
+      "enum": [
+        "transcript",
+        "ocr",
+        "frame",
+        "clip",
+        "mixed"
+      ]
+    },
+    "expectedSpans": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "startSec",
+          "endSec"
+        ],
+        "properties": {
+          "startSec": {
+            "type": "number",
+            "minimum": 0
+          },
+          "endSec": {
+            "type": "number",
+            "minimum": 0
+          },
+          "toleranceSec": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "expectedFrames": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "atSec"
+        ],
+        "properties": {
+          "atSec": {
+            "type": "number",
+            "minimum": 0
+          },
+          "toleranceSec": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "maxTopHitDurationSec": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "notes": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "additionalProperties": true
+}

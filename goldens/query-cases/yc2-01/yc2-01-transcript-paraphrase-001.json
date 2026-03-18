@@ -1,0 +1,18 @@
+{
+  "id": "yc2-01-transcript-paraphrase-001",
+  "videoId": "yc2-01",
+  "family": "transcript_paraphrase",
+  "query": "when do they explain that frying the chips twice makes them crispier",
+  "lookupQueryTranscript": "twice frying them",
+  "expectedSource": "transcript",
+  "groundingStatus": "grounded-local-artifacts",
+  "expectedSpans": [
+    {
+      "startSec": 31.66,
+      "endSec": 60.95,
+      "toleranceSec": 2
+    }
+  ],
+  "maxTopHitDurationSec": 32,
+  "notes": "Grounded from the explanation of why the chips are cut thin and cooked twice."
+}

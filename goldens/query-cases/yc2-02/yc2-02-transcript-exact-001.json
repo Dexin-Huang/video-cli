@@ -1,0 +1,18 @@
+{
+  "id": "yc2-02-transcript-exact-001",
+  "videoId": "yc2-02",
+  "family": "transcript_exact",
+  "query": "find when he says the garnish is fresh chopped parsley",
+  "lookupQueryTranscript": "fresh chopped parsley",
+  "expectedSource": "transcript",
+  "groundingStatus": "grounded-local-artifacts",
+  "expectedSpans": [
+    {
+      "startSec": 245.28,
+      "endSec": 247.44,
+      "toleranceSec": 1.5
+    }
+  ],
+  "maxTopHitDurationSec": 5,
+  "notes": "Grounded from the garnish line near the end of the clam-chowder recipe."
+}

@@ -1,0 +1,24 @@
+{
+  "id": "custom-02",
+  "title": "Neural Networks Explained in 5 minutes",
+  "status": "annotated",
+  "sourceType": "custom",
+  "sourceDataset": "custom",
+  "sourceRef": "https://www.youtube.com/watch?v=jmmW0F0biz0",
+  "localVideoPath": ".tmp_goldens/jmmW0F0biz0.mp4",
+  "artifactVideoId": "jmmw0f0biz0-be1c0abca8",
+  "annotationStatus": "grounded-local-artifacts",
+  "durationSec": 271.023,
+  "modalityFocus": [
+    "ocr",
+    "transcript",
+    "visual"
+  ],
+  "requiredQueryFamilies": [
+    "ocr_exact",
+    "transcript_paraphrase",
+    "mixed_grounding",
+    "event_localization"
+  ],
+  "notes": "Grounded from local OCR and transcript artifacts created on 2026-03-13 from the cached neural-networks explainer."
+}

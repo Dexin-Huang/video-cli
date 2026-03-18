@@ -1,0 +1,62 @@
+{
+  "name": "grep-basic",
+  "description": "Regression suite for local evidence retrieval and utterance-level transcript matching.",
+  "ocrFixture": "evals/fixtures/ocr-sample.json",
+  "transcriptFixture": "evals/fixtures/transcript-sample.json",
+  "cases": [
+    {
+      "id": "ocr-tokyo-dome",
+      "query": "tokyo dome",
+      "expectedSource": "ocr",
+      "expectedWindows": [
+        {
+          "atSec": 0,
+          "toleranceSec": 0.5
+        }
+      ],
+      "minMatches": 1
+    },
+    {
+      "id": "transcript-tiebreaker",
+      "query": "tiebreaker",
+      "expectedSource": "transcript",
+      "expectedWindows": [
+        {
+          "startSec": 8,
+          "endSec": 18,
+          "toleranceSec": 0.5
+        }
+      ],
+      "minMatches": 1,
+      "maxTopMatchDurationSec": 20
+    },
+    {
+      "id": "transcript-quotient",
+      "query": "defensive outs",
+      "expectedSource": "transcript",
+      "expectedWindows": [
+        {
+          "startSec": 24.5,
+          "endSec": 40,
+          "toleranceSec": 0.5
+        }
+      ],
+      "minMatches": 1,
+      "maxTopMatchDurationSec": 20
+    },
+    {
+      "id": "transcript-playoffs",
+      "query": "playoffs",
+      "expectedSource": "transcript",
+      "expectedWindows": [
+        {
+          "startSec": 84,
+          "endSec": 96,
+          "toleranceSec": 0.5
+        }
+      ],
+      "minMatches": 1,
+      "maxTopMatchDurationSec": 20
+    }
+  ]
+}

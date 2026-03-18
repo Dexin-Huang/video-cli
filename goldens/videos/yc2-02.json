@@ -1,0 +1,26 @@
+{
+  "id": "yc2-02",
+  "title": "Bacon Clam Chowder in a Bread Bowl - PoorMansGourmet",
+  "status": "annotated",
+  "sourceType": "public",
+  "sourceDataset": "YouCook2",
+  "sourceSplit": "validation",
+  "sourceRef": "https://www.youtube.com/watch?v=p-PFp1c0FKs",
+  "datasetVideoId": "p-PFp1c0FKs",
+  "localVideoPath": ".tmp_public/p-PFp1c0FKs.mp4",
+  "artifactVideoId": "p-pfp1c0fks-11d6cfa00d",
+  "annotationStatus": "grounded-local-artifacts",
+  "durationSec": 302.30059,
+  "modalityFocus": [
+    "transcript",
+    "temporal",
+    "visual"
+  ],
+  "requiredQueryFamilies": [
+    "transcript_exact",
+    "transcript_paraphrase",
+    "event_localization",
+    "visual_state"
+  ],
+  "notes": "Grounded from local Deepgram transcript artifacts with recipe steps aligned to narrated cooking actions in the YouCook2 clam-chowder clip."
+}

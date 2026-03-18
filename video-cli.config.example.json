@@ -1,0 +1,21 @@
+{
+  "preset": "balanced",
+  "ocr": {
+    "provider": "gemini",
+    "model": "gemini-3.1-flash-lite-preview",
+    "watchpointLimit": 8
+  },
+  "transcribe": {
+    "provider": "deepgram",
+    "model": "nova-3",
+    "chunkSeconds": 480,
+    "trimSilence": false,
+    "minSilenceSec": 1.5,
+    "padSec": 0.25,
+    "silenceNoiseDb": -35,
+    "diarize": true,
+    "utterances": true,
+    "smartFormat": true,
+    "punctuate": true
+  }
+}
