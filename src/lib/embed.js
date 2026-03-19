@@ -39,28 +39,35 @@ async function embedImage({ apiKey, imagePath, model, taskType, dimensions }) {
 async function callEmbedApi({ apiKey, model, dimensions, taskType, content }) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:embedContent?key=${encodeURIComponent(apiKey)}`;
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      content,
-      taskType,
-      outputDimensionality: dimensions,
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({
+        content,
+        taskType,
+        outputDimensionality: dimensions,
+      }),
+    });
 
-  const payload = await response.json();
-  if (!response.ok) {
-    const message = payload?.error?.message || JSON.stringify(payload);
-    throw new Error(`Gemini embedding request failed: ${message}`);
+    const payload = await response.json();
+    if (!response.ok) {
+      const message = payload?.error?.message || JSON.stringify(payload);
+      throw new Error(`Gemini embedding request failed: ${message}`);
+    }
+
+    const values = payload?.embedding?.values;
+    if (!Array.isArray(values)) {
+      throw new Error('Gemini embedding response missing embedding.values');
+    }
+
+    return values;
+  } finally {
+    clearTimeout(timeout);
   }
-
-  const values = payload?.embedding?.values;
-  if (!Array.isArray(values)) {
-    throw new Error('Gemini embedding response missing embedding.values');
-  }
-
-  return values;
 }
 
 function cosineSimilarity(vecA, vecB) {

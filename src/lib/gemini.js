@@ -43,36 +43,43 @@ function createGeminiProvider() {
 async function generateInlineContent({ apiKey, model, prompt, filePath, mimeType }) {
   const data = fs.readFileSync(filePath).toString('base64');
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      contents: [
-        {
-          parts: [
-            {
-              inlineData: {
-                mimeType,
-                data,
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              {
+                inlineData: {
+                  mimeType,
+                  data,
+                },
               },
-            },
-            {
-              text: prompt,
-            },
-          ],
-        },
-      ],
-    }),
-  });
+              {
+                text: prompt,
+              },
+            ],
+          },
+        ],
+      }),
+    });
 
-  const payload = await response.json();
-  if (!response.ok) {
-    throw new Error(`Gemini request failed: ${extractErrorMessage(payload)}`);
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(`Gemini request failed: ${extractErrorMessage(payload)}`);
+    }
+
+    return extractText(payload).trim();
+  } finally {
+    clearTimeout(timeout);
   }
-
-  return extractText(payload).trim();
 }
 
 function extractText(payload) {

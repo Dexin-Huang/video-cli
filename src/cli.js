@@ -30,9 +30,17 @@ const { readArtifactJson, writeArtifactJson } = require('./lib/artifacts');
 const { createProvider } = require('./lib/providers');
 const { renderBundleMarkdown } = require('./lib/render');
 const { findMatches, semanticSearch, getContext, buildChapters, findNext } = require('./lib/search');
-const { buildEmbeddings, embedText, rankBySimilarity } = require('./lib/embed');
+const { buildEmbeddings, embedText } = require('./lib/embed');
 const { askQuestion } = require('./lib/ask');
 const { describeFrames, extractDenseFrames, generateEvalQueries } = require('./lib/describe');
+
+// Commands whose first positional is a video-id and can default to VIDEO_CLI_ID
+const VIDEO_ID_COMMANDS = new Set([
+  'ask', 'inspect', 'timeline', 'watchpoints', 'bundle', 'brief',
+  'ocr', 'transcribe', 'grep', 'frame', 'clip', 'embed', 'search',
+  'context', 'chapters', 'next', 'describe', 'status',
+  'eval:generate', 'eval:run',
+]);
 
 async function main(argv) {
   ensureDataRoot();
@@ -46,6 +54,11 @@ async function main(argv) {
   }
 
   const { positionals, flags } = parseArgs(rest);
+
+  // Default video-id from VIDEO_CLI_ID env var
+  if (process.env.VIDEO_CLI_ID && VIDEO_ID_COMMANDS.has(command) && positionals.length === 0) {
+    positionals.unshift(process.env.VIDEO_CLI_ID);
+  }
 
   switch (command) {
     case 'ingest':
@@ -90,6 +103,8 @@ async function main(argv) {
       return runNext(positionals, flags);
     case 'describe':
       return runDescribe(positionals, flags, config);
+    case 'status':
+      return runStatus(positionals);
     case 'eval:generate':
       return runEvalGenerate(positionals, flags, config);
     case 'eval:run':
@@ -101,32 +116,38 @@ async function main(argv) {
 
 function printHelp() {
   const lines = [
-    'video-cli',
+    'video-cli \u2014 video REPL for AI agents',
     '',
-    'Commands:',
-    '  video-cli setup <file>                              (ingest + transcribe + ocr + embed in one step)',
-    '  video-cli ask <video-id> <question>                  (answer with grounded citations)',
-    '  video-cli ingest <file> [--watchpoints N] [--scene-threshold N]',
-    '  video-cli list',
-    '  video-cli config',
-    '  video-cli inspect <video-id>',
-    '  video-cli timeline <video-id>',
-    '  video-cli watchpoints <video-id> [--limit N] [--materialize]',
-    '  video-cli bundle <video-id> [--limit N]',
-    '  video-cli brief <video-id> [--limit N] [--output <path>]',
-    '  video-cli ocr <video-id> [--limit N] [--provider <name>] [--model <name>]',
-    '  video-cli transcribe <video-id> [--chunk-seconds N] [--limit N] [--provider <name>] [--model <name>] [--trim-silence]',
-    '  video-cli embed <video-id> [--dimensions N] [--no-frames] [--no-transcript] [--no-ocr]',
-    '  video-cli search <video-id> <query> [--top N] [--threshold N] [--hybrid]',
-    '  video-cli grep <video-id> <query>',
-    '  video-cli context <video-id> --at <seconds> [--window N]',
-    '  video-cli chapters <video-id>',
-    '  video-cli next <video-id> --from <seconds>',
-    '  video-cli describe <video-id> [--interval N] [--model <name>]',
-    '  video-cli eval:generate <video-id> [--model <name>]',
-    '  video-cli eval:run <video-id> [--top N]',
-    '  video-cli frame <video-id> --at <seconds> [--output <path>]',
-    '  video-cli clip <video-id> --at <seconds> [--pre N] [--post N] [--output <path>]',
+    'Quick Start:',
+    '  setup <file>                    Full pipeline: ingest + transcribe + ocr + embed',
+    '  ask <video-id> <question>       Answer with grounded citations',
+    '',
+    'Navigation:',
+    '  search <video-id> <query>       Semantic + lexical search',
+    '  context <video-id> --at T       Everything around a timestamp',
+    '  chapters <video-id>             Semantic chapter segmentation',
+    '  next <video-id> --from T        Next significant moment',
+    '  grep <video-id> <text>          Exact substring search',
+    '',
+    'Extraction:',
+    '  frame <video-id> --at T         Extract a single frame (JPG)',
+    '  clip <video-id> --at T          Extract a video clip',
+    '',
+    'Pipeline (run individually if needed):',
+    '  ingest <file>                   Probe video + adaptive watchpoints',
+    '  transcribe <video-id>           Audio \u2192 transcript (Deepgram)',
+    '  ocr <video-id>                  Frames \u2192 text (Gemini)',
+    '  embed <video-id>                Build embeddings (Gemini)',
+    '  describe <video-id>             Dense frame descriptions',
+    '',
+    'Inspection:',
+    '  list                            All ingested videos',
+    '  status <video-id>               Artifact readiness + pipeline status',
+    '  inspect <video-id>              Full manifest',
+    '  timeline <video-id>             Watchpoints + scene changes',
+    '  config                          Current config',
+    '',
+    "Use 'video-cli <command> --help' for details on a specific command.",
   ];
   console.log(lines.join('\n'));
 }
@@ -277,6 +298,20 @@ async function runIngest(positionals, flags) {
 async function runSetup(positionals, flags, config) {
   const inputFile = requirePositional(positionals, 0, '<file>');
 
+  // Cost estimate based on probe duration
+  const resolvedForEstimate = path.resolve(inputFile);
+  const probeResult = probeVideo(resolvedForEstimate);
+  const estDuration = Number(probeResult.format.duration || 0);
+  const estMinutes = estDuration / 60;
+  const estTranscribe = estMinutes * 0.004;
+  const estOcr = 0.003;
+  const estEmbed = 0.001;
+  const estTotal = estTranscribe + estOcr + estEmbed;
+  console.error(
+    `setup: estimated cost ~$${estTotal.toFixed(4)} ` +
+    `(transcribe ~$${estTranscribe.toFixed(4)}, OCR ~$${estOcr.toFixed(4)}, embed ~$${estEmbed.toFixed(4)})`
+  );
+
   // Step 1: Ingest
   console.error('setup: ingesting...');
   await runIngest(positionals, flags);
@@ -403,6 +438,31 @@ async function runList() {
     importedAt: manifest.importedAt,
   }));
   printJson(manifests);
+}
+
+async function runStatus(positionals) {
+  const id = requirePositional(positionals, 0, '<video-id>');
+  const manifest = loadManifest(id);
+  const hasTranscript = !!readArtifactJson(id, 'transcript.json');
+  const hasOcr = !!readArtifactJson(id, 'ocr.json');
+  const hasEmbeddings = !!readArtifactJson(id, 'embeddings.json');
+  const hasDescriptions = !!readArtifactJson(id, 'descriptions.json');
+  const readyForAsk = hasTranscript && hasOcr && hasEmbeddings;
+  const readyForSearch = hasEmbeddings;
+
+  printJson({
+    id,
+    sourceName: manifest.sourceName,
+    durationSec: manifest.media.durationSec,
+    artifacts: {
+      transcript: hasTranscript,
+      ocr: hasOcr,
+      embeddings: hasEmbeddings,
+      descriptions: hasDescriptions,
+    },
+    readyForAsk,
+    readyForSearch,
+  });
 }
 
 async function runConfig(config) {
@@ -884,6 +944,31 @@ async function runDescribe(positionals, flags, config) {
   const intervalSec = parseNumberFlag(flags, 'interval', 2);
   const model = String(flags.model || config.ocr.model);
   const apiKey = process.env.GEMINI_API_KEY || null;
+  const dryRun = parseBooleanFlag(flags, 'dry-run', false);
+  const maxFrames = parseNumberFlag(flags, 'max-frames', 500);
+
+  const frameCount = Math.ceil(manifest.media.durationSec / intervalSec);
+  const estimatedCost = frameCount * 0.00002;
+
+  if (frameCount > maxFrames) {
+    throw new Error(
+      `Frame count ${frameCount} exceeds --max-frames limit of ${maxFrames}. ` +
+      `Estimated cost: ~$${estimatedCost.toFixed(4)}. ` +
+      `Use --max-frames ${frameCount} to override.`
+    );
+  }
+
+  if (dryRun) {
+    printJson({
+      id,
+      dryRun: true,
+      frameCount,
+      intervalSec,
+      estimatedCost: `~$${estimatedCost.toFixed(4)}`,
+      message: `Dry run: ${frameCount} frames \u00d7 ~$0.00002/frame = ~$${estimatedCost.toFixed(4)} estimated cost`,
+    });
+    return;
+  }
 
   const frames = extractDenseFrames(
     manifest.sourcePath, manifest.media.durationSec, intervalSec, id
@@ -989,13 +1074,14 @@ async function runEvalRun(positionals, flags, config) {
       dimensions: embeddings.dimensions,
     });
 
-    const semanticMatches = rankBySimilarity(queryVec, embeddings.items, topK * 2);
     const lexicalMatches = findMatches({ query: evalQuery.query, ocr, transcript });
-    const matches = mergeSemanticAndLexical({
-      semanticMatches,
+    const matches = semanticSearch({
+      query: evalQuery.query,
+      queryVec,
+      embeddings: embeddings.items,
       lexicalMatches,
+      descriptions: null,
       topK,
-      threshold: 0,
     });
 
     const bestIoU = computeBestIoU(matches, evalQuery.groundTruthSpans);

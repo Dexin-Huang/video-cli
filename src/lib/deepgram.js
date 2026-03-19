@@ -40,21 +40,28 @@ function createDeepgramProvider() {
         url.searchParams.set('language', String(language));
       }
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          Authorization: `Token ${apiKey}`,
-          'Content-Type': guessAudioMimeType(audioPath),
-        },
-        body: fs.readFileSync(audioPath),
-      });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            Authorization: `Token ${apiKey}`,
+            'Content-Type': guessAudioMimeType(audioPath),
+          },
+          signal: controller.signal,
+          body: fs.readFileSync(audioPath),
+        });
 
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(`Deepgram request failed: ${extractErrorMessage(payload)}`);
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(`Deepgram request failed: ${extractErrorMessage(payload)}`);
+        }
+
+        return normalizeTranscriptPayload(payload);
+      } finally {
+        clearTimeout(timeout);
       }
-
-      return normalizeTranscriptPayload(payload);
     },
   };
 }

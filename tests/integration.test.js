@@ -102,6 +102,11 @@ test('ingest, list, inspect, frame, and clip work end to end', () => {
   assert.equal(search.matchCount >= 1, true);
   assert.equal(typeof search.matches[0].score, 'number');
 
+  const ask = runCli(['ask', ingest.id, 'what is in this video']);
+  assert.equal(typeof ask.answer, 'string');
+  assert.ok(Array.isArray(ask.citations));
+  assert.ok(Array.isArray(ask.suggestedFollowUps));
+
   const frame = runCli(['frame', ingest.id, '--at', '1.25']);
   assert.equal(fs.existsSync(frame.output), true);
 

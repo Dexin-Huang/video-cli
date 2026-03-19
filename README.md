@@ -1,97 +1,94 @@
 # video-cli
 
-Local-first video inspection CLI for agents.
+Local-first CLI that makes videos searchable and inspectable for AI agents.
 
-The current shape is:
+Ingest a video, then ask questions with grounded citations -- or search, navigate chapters, extract frames and clips. All commands return JSON.
 
-- ingest a video once
-- store local evidence under `data/videos/<id>/`
-- OCR representative frames
-- transcribe audio with timestamps
-- grep that evidence without re-calling a model
+## Quick Start
 
-## Status
+```bash
+# one-time setup: ingest + transcribe + OCR + embed
+video-cli setup recording.mp4
 
-This repo is still early, but the basic loop works:
+# ask a question
+video-cli ask <id> "what is the main argument?"
+```
 
-- `ingest`
-- `ocr`
-- `transcribe`
-- `grep`
-- `frame`
-- `clip`
+Most agent sessions are 1-3 commands. `setup` then `ask` handles the 80% case.
 
-The default preset is:
+## Command Tiers
 
-- OCR: Gemini `gemini-3.1-flash-lite-preview`
-- transcription: Deepgram `nova-3`
+### Tier 1: Intent Commands
+
+| Command | Purpose |
+|---------|---------|
+| `setup <file>` | Ingest + transcribe + OCR + embed in one step |
+| `ask <id> <question>` | Answer with grounded citations |
+
+### Tier 2: Navigation and Extraction
+
+| Command | Purpose |
+|---------|---------|
+| `search <id> <query>` | Semantic + lexical search |
+| `context <id> --at <sec>` | Everything around a timestamp |
+| `chapters <id>` | Segment into chapters |
+| `next <id> --from <sec>` | Next significant moment |
+| `grep <id> <text>` | Exact substring search (no embeddings) |
+| `frame <id> --at <sec>` | Extract a single frame as JPG |
+| `clip <id> --at <sec>` | Extract a short video clip |
+
+### Tier 3: Pipeline and Inspection
+
+| Command | Purpose |
+|---------|---------|
+| `ingest <file>` | Probe video, detect scenes, pick watchpoints |
+| `transcribe <id>` | Transcribe audio (Deepgram nova-3) |
+| `ocr <id>` | OCR representative frames (Gemini flash-lite) |
+| `embed <id>` | Build embeddings from transcript + OCR + frames |
+| `describe <id>` | Dense frame descriptions (optional) |
+| `list` | List all ingested videos |
+| `inspect <id>` | Full manifest JSON |
+| `timeline <id>` | Watchpoints + scene change timestamps |
+| `watchpoints <id>` | Raw watchpoint data |
+| `bundle <id>` | Evidence bundle with frame paths |
+| `brief <id>` | Render evidence as Markdown |
+| `config` | Show runtime configuration |
 
 ## Requirements
 
-- Node `>=22`
-- `ffmpeg`
-- `ffprobe`
+- Node >= 22
+- `ffmpeg` and `ffprobe`
+- API keys: `GEMINI_API_KEY`, `DEEPGRAM_API_KEY` in `.env`
 
-## Setup
+## Installation
 
-1. Create a local env file:
-
-```powershell
-Copy-Item .env.example .env
+```bash
+cp .env.example .env
+# fill in API keys
+node video-cli.js setup ./sample.mp4
 ```
 
-2. Fill in API keys in `.env`.
+## Agent Integration
 
-3. Run the CLI directly:
+See [SKILL.md](SKILL.md) for the complete agent-facing reference: all commands, output shapes, flags, and session examples.
 
-```powershell
-node video-cli.js --help
-```
+## Tests and Evals
 
-## Example
-
-```powershell
-node video-cli.js ingest .\sample.mp4
-node video-cli.js ocr <video-id>
-node video-cli.js transcribe <video-id> --trim-silence
-node video-cli.js grep <video-id> "tiebreaker"
-node video-cli.js clip <video-id> --at 42.6 --pre 3 --post 3
-```
-
-## Tests And Evals
-
-Black-box tests:
-
-```powershell
-npm test
-```
-
-Deterministic retrieval evals:
-
-```powershell
-npm run eval
-```
-
-JSON output for agent loops:
-
-```powershell
-npm run eval:json
+```bash
+npm test              # black-box CLI tests
+npm run eval          # deterministic retrieval evals
+npm run eval:json     # JSON output for agent loops
+npm run goldens:check # golden-set scaffold
 ```
 
 The eval harness uses synthetic local fixtures. It does not call Gemini or Deepgram.
 
-Golden-set scaffold:
-
-```powershell
-npm run goldens:check
-```
-
 ## Repo Layout
 
-- `src/cli.js`: command routing
-- `src/lib/`: storage, media, providers, search helpers
-- `tests/`: black-box CLI tests
-- `evals/`: deterministic regression evals for retrieval behavior
-- `goldens/`: planned mixed 15-video product-aligned golden set
-- `docs/`: architecture notes
-- `reference/`: external reference repo clone
+- `src/cli.js` -- command routing
+- `src/lib/` -- storage, media, providers, search, embeddings, ask
+- `tests/` -- black-box CLI tests
+- `evals/` -- deterministic regression evals for retrieval
+- `goldens/` -- planned mixed 15-video golden set
+- `docs/` -- architecture notes
+- `SKILL.md` -- agent-facing command reference

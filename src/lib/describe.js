@@ -41,31 +41,38 @@ async function callGeminiDescribe({ apiKey, model, prompt, imagePath }) {
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{
-        parts: [
-          { inlineData: { mimeType, data } },
-          { text: prompt },
-        ],
-      }],
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { inlineData: { mimeType, data } },
+            { text: prompt },
+          ],
+        }],
+      }),
+    });
 
-  const payload = await response.json();
-  if (!response.ok) {
-    const message = payload?.error?.message || JSON.stringify(payload);
-    throw new Error(`Gemini describe failed: ${message}`);
-  }
+    const payload = await response.json();
+    if (!response.ok) {
+      const message = payload?.error?.message || JSON.stringify(payload);
+      throw new Error(`Gemini describe failed: ${message}`);
+    }
 
-  const candidates = Array.isArray(payload.candidates) ? payload.candidates : [];
-  const parts = candidates[0]?.content?.parts;
-  if (!Array.isArray(parts)) {
-    return '';
+    const candidates = Array.isArray(payload.candidates) ? payload.candidates : [];
+    const parts = candidates[0]?.content?.parts;
+    if (!Array.isArray(parts)) {
+      return '';
+    }
+    return parts.map(p => typeof p.text === 'string' ? p.text : '').join('\n').trim();
+  } finally {
+    clearTimeout(timeout);
   }
-  return parts.map(p => typeof p.text === 'string' ? p.text : '').join('\n').trim();
 }
 
 function extractDenseFrames(sourcePath, durationSec, intervalSec, videoId) {
@@ -187,33 +194,40 @@ Return ONLY the JSON array, no other text.`;
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.3 },
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.3 },
+      }),
+    });
 
-  const payload = await response.json();
-  if (!response.ok) {
-    const message = payload?.error?.message || JSON.stringify(payload);
-    throw new Error(`Gemini eval generation failed: ${message}`);
+    const payload = await response.json();
+    if (!response.ok) {
+      const message = payload?.error?.message || JSON.stringify(payload);
+      throw new Error(`Gemini eval generation failed: ${message}`);
+    }
+
+    const candidates = Array.isArray(payload.candidates) ? payload.candidates : [];
+    const text = (candidates[0]?.content?.parts || [])
+      .map(p => typeof p.text === 'string' ? p.text : '')
+      .join('')
+      .trim();
+
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      throw new Error('Failed to parse eval queries from Gemini response');
+    }
+
+    return JSON.parse(jsonMatch[0]);
+  } finally {
+    clearTimeout(timeout);
   }
-
-  const candidates = Array.isArray(payload.candidates) ? payload.candidates : [];
-  const text = (candidates[0]?.content?.parts || [])
-    .map(p => typeof p.text === 'string' ? p.text : '')
-    .join('')
-    .trim();
-
-  const jsonMatch = text.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) {
-    throw new Error('Failed to parse eval queries from Gemini response');
-  }
-
-  return JSON.parse(jsonMatch[0]);
 }
 
 module.exports = {

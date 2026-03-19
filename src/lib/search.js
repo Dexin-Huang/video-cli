@@ -193,7 +193,7 @@ function getContext({ atSec, windowSec, transcript, ocr, descriptions, manifest 
     }
   }
 
-  return {
+  const context = {
     atSec,
     windowSec,
     startSec,
@@ -203,6 +203,14 @@ function getContext({ atSec, windowSec, transcript, ocr, descriptions, manifest 
     frames,
     sceneChanges,
   };
+
+  context.suggestedCommands = [
+    `video-cli frame <id> --at ${atSec}`,
+    `video-cli clip <id> --at ${atSec} --pre 5 --post 10`,
+    `video-cli next <id> --from ${endSec}`,
+  ];
+
+  return context;
 }
 
 // ============================================================
