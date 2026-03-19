@@ -383,7 +383,7 @@ async function runAsk(positionals, flags, config) {
 
   const askModel = config.ocr.model || 'gemini-3.1-flash-lite-preview';
   const result = await askQuestion({
-    apiKey, model: askModel, query, searchResults, context,
+    apiKey, model: askModel, query, searchResults, context, videoId: id,
   });
 
   printJson({
