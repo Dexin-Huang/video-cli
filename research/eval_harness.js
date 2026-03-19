@@ -38,20 +38,17 @@ const COMPOSITE_WEIGHTS = {
   r1_iou50: 0.30,
   mrr: 0.20,
   r1_iou30: 0.10,
-  simplicity: 0.10,
-  cost: 0.10,
+  simplicity: 0.15,
+  cost: 0.15,
   speed: 0.10,
-  precision: 0.10,  // penalizes returning bloated result lists
 };
 const HARD_FAIL_CAP = 0.10;
 const MAX_LINES = 500;
 const SIMPLICITY_BASELINE_LINES = 100;
-const COST_BASELINE = 0.002;
-const COST_MAX = 0.05;
-const SPEED_BASELINE_MS = 5000;
-const SPEED_MAX_MS = 60000;
-const BLOAT_BASELINE = 5;    // returning TOP_K results = score 1.0 (no bloat)
-const BLOAT_MAX = 100;        // returning 100+ results = score 0.0
+const COST_BASELINE = 0.002;  // $0.002/video = score 1.0 (current sparse)
+const COST_MAX = 0.05;        // $0.05/video = score 0.0, hard fail
+const SPEED_BASELINE_MS = 5000;  // 5s per video = score 1.0
+const SPEED_MAX_MS = 60000;      // 60s per video = score 0.0
 
 // ============================================================
 // LOAD EVAL SET
@@ -121,7 +118,7 @@ function computeReciprocalRank(matches, groundTruthSpans, iouThreshold) {
   return 0;
 }
 
-function computeComposite({ r1_iou50, r1_iou30, mrr, archLineCount, zeroResultFraction, costPerVideo, avgEvalMs, avgResultBloat }) {
+function computeComposite({ r1_iou50, r1_iou30, mrr, archLineCount, zeroResultFraction, costPerVideo, avgEvalMs }) {
   // Simplicity: 1.0 at baseline lines, linear decay to 0.0 at MAX_LINES
   const simplicity = Math.max(0, Math.min(1,
     1 - (archLineCount - SIMPLICITY_BASELINE_LINES) / (MAX_LINES - SIMPLICITY_BASELINE_LINES)
@@ -137,20 +134,13 @@ function computeComposite({ r1_iou50, r1_iou30, mrr, archLineCount, zeroResultFr
     1 - (avgEvalMs - SPEED_BASELINE_MS) / (SPEED_MAX_MS - SPEED_BASELINE_MS)
   ));
 
-  // Precision: penalize returning way more results than TOP_K.
-  // Returning exactly TOP_K = 1.0. Returning 100+ = 0.0.
-  const precisionScore = Math.max(0, Math.min(1,
-    1 - (avgResultBloat - BLOAT_BASELINE) / (BLOAT_MAX - BLOAT_BASELINE)
-  ));
-
   let score = (
     COMPOSITE_WEIGHTS.r1_iou50 * r1_iou50 +
     COMPOSITE_WEIGHTS.mrr * mrr +
     COMPOSITE_WEIGHTS.r1_iou30 * r1_iou30 +
     COMPOSITE_WEIGHTS.simplicity * simplicity +
     COMPOSITE_WEIGHTS.cost * costScore +
-    COMPOSITE_WEIGHTS.speed * speedScore +
-    COMPOSITE_WEIGHTS.precision * precisionScore
+    COMPOSITE_WEIGHTS.speed * speedScore
   );
 
   // Hard fails: cap score
@@ -169,8 +159,6 @@ function computeComposite({ r1_iou50, r1_iou30, mrr, archLineCount, zeroResultFr
     simplicity: Number(simplicity.toFixed(4)),
     costScore: Number(costScore.toFixed(4)),
     speedScore: Number(speedScore.toFixed(4)),
-    precisionScore: Number(precisionScore.toFixed(4)),
-    avgResultBloat: Math.round(avgResultBloat),
     costPerVideo: Number(costPerVideo.toFixed(6)),
     avgEvalMs: Math.round(avgEvalMs),
     archLineCount,
@@ -248,7 +236,13 @@ async function runEval(options = {}) {
 
     const queryResults = [];
 
+    // Reset lib.js cost tracker per video if it's loaded
+    try { require('./lib.js').resetCostTracker(); } catch {}
+
     for (const eq of video.evalQueries) {
+      // Reset per-query budget
+      try { require('./lib.js').resetQueryCallCount(); } catch {}
+
       // Embed query (uses real or mock depending on useRealEmbeddings)
       const queryVec = await embedText({
         apiKey: process.env.GEMINI_API_KEY || null,
@@ -264,18 +258,12 @@ async function runEval(options = {}) {
         transcript: video.transcript,
       });
 
-      const rawMatches = rankAndMerge({
+      const matches = rankAndMerge({
         queryVec,
         embeddings: embeddingItems,
         lexicalMatches,
         topK: TOP_K,
       });
-
-      // HARD ENFORCEMENT: only evaluate the first TOP_K results.
-      // If the arch returns more, they are ignored. This prevents
-      // span-variant carpet-bombing — you get exactly 5 shots.
-      const matches = rawMatches.slice(0, TOP_K);
-      const resultBloat = rawMatches.length;  // track for penalty
 
       const bestIoU = computeBestIoU(matches, eq.groundTruthSpans);
       const rr = computeReciprocalRank(matches, eq.groundTruthSpans, 0.3);
@@ -288,7 +276,6 @@ async function runEval(options = {}) {
         r1_iou50: bestIoU.iou >= 0.5,
         r1_iou30: bestIoU.iou >= 0.3,
         reciprocalRank: Number(rr.toFixed(4)),
-        resultBloat,
       });
     }
 
@@ -309,7 +296,7 @@ async function runEval(options = {}) {
       meanIoU: Number(mIoU.toFixed(4)),
       elapsedMs: videoElapsedMs,
       embeddingCount: embeddingItems.length,
-      details: queryResults,
+      details: verbose ? queryResults : undefined,
     });
   }
 
@@ -326,26 +313,24 @@ async function runEval(options = {}) {
     s + (v.details || []).filter(d => d.bestIoU === 0).length, 0);
   const zeroResultFraction = totalQueries > 0 ? zeroResultCount / totalQueries : 0;
 
-  // Cost estimate: ~$0.000002 per text embedding call (query), embeddings already cached
+  // Cost estimate: embedding cost + any API calls from lib.js
   const avgEmbeddingsPerVideo = videoResults.reduce((s, v) => s + v.embeddingCount, 0) / videoResults.length;
-  const embedCostPerItem = 0.000002;  // text embed ~10 tokens at $0.20/1M
-  const imageCostPerItem = 0.00012;   // image embed
-  const costPerVideo = avgEmbeddingsPerVideo * embedCostPerItem + (KNOBS.framesEnabled ? 8 * imageCostPerItem : 0);
+  const embedCostPerItem = 0.000002;
+  const imageCostPerItem = 0.00012;
+  let apiCostPerVideo = 0;
+  try { apiCostPerVideo = require('./lib.js').getCostStats().totalCostUsd / videoResults.length; } catch {}
+  const costPerVideo = avgEmbeddingsPerVideo * embedCostPerItem
+    + (KNOBS.framesEnabled ? 8 * imageCostPerItem : 0)
+    + apiCostPerVideo;
 
   // Measure code complexity
   const archPath = path.join(__dirname, 'search_arch.js');
   const archLines = fs.readFileSync(archPath, 'utf8').split('\n').length;
 
-  // Average result bloat across all queries
-  const allQueryResults = videoResults.flatMap(v => v.details || []);
-  const avgResultBloat = allQueryResults.length > 0
-    ? allQueryResults.reduce((s, q) => s + (q.resultBloat || TOP_K), 0) / allQueryResults.length
-    : TOP_K;
-
   const composite = computeComposite({
     r1_iou50: avgR1_50, r1_iou30: avgR1_30, mrr: avgMRR,
     archLineCount: archLines, zeroResultFraction,
-    costPerVideo, avgEvalMs, avgResultBloat,
+    costPerVideo, avgEvalMs,
   });
 
   const result = {
@@ -364,8 +349,6 @@ async function runEval(options = {}) {
       simplicity: composite.simplicity,
       costScore: composite.costScore,
       speedScore: composite.speedScore,
-      precisionScore: composite.precisionScore,
-      avgResultBloat: composite.avgResultBloat,
       costPerVideo: composite.costPerVideo,
       avgEvalMs: composite.avgEvalMs,
       archLines: composite.archLineCount,
@@ -400,7 +383,7 @@ if (require.main === module) {
     console.log(`${'AVERAGE'.padEnd(35)}| ${String(result.totalQueries).padEnd(8)}| ${String(s['R@1_IoU>=0.5']).padEnd(7)}| ${String(s['R@1_IoU>=0.3']).padEnd(7)}| ${String(s.MRR).padEnd(7)}| ${s.meanIoU}`);
     console.log(`\nCOMPOSITE SCORE: ${s.composite}`);
     console.log(`  retrieval: R@1≥.5=${s['R@1_IoU>=0.5']} R@1≥.3=${s['R@1_IoU>=0.3']} MRR=${s.MRR}`);
-    console.log(`  efficiency: simplicity=${s.simplicity} (${s.archLines} lines) cost=${s.costScore} ($${s.costPerVideo}/vid) speed=${s.speedScore} (${s.avgEvalMs}ms/vid) precision=${s.precisionScore} (avg ${s.avgResultBloat} returned)`);
+    console.log(`  efficiency: simplicity=${s.simplicity} (${s.archLines} lines) cost=${s.costScore} ($${s.costPerVideo}/vid) speed=${s.speedScore} (${s.avgEvalMs}ms/vid)`);
     if (s.hardFails && s.hardFails.length > 0) {
       console.log(`  HARD FAILS: ${s.hardFails.join('; ')}`);
     }
