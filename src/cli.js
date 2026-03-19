@@ -27,7 +27,7 @@ const {
 const { readArtifactJson, writeArtifactJson } = require('./lib/artifacts');
 const { createProvider } = require('./lib/providers');
 const { renderBundleMarkdown } = require('./lib/render');
-const { findMatches, mergeSemanticAndLexical } = require('./lib/search');
+const { findMatches, semanticSearch, getContext, buildChapters, findNext } = require('./lib/search');
 const { buildEmbeddings, embedText, rankBySimilarity } = require('./lib/embed');
 const { describeFrames, extractDenseFrames, generateEvalQueries } = require('./lib/describe');
 
@@ -75,6 +75,12 @@ async function main(argv) {
       return runEmbed(positionals, flags, config);
     case 'search':
       return runSearch(positionals, flags, config);
+    case 'context':
+      return runContext(positionals, flags);
+    case 'chapters':
+      return runChapters(positionals);
+    case 'next':
+      return runNext(positionals, flags);
     case 'describe':
       return runDescribe(positionals, flags, config);
     case 'eval:generate':
@@ -104,6 +110,9 @@ function printHelp() {
     '  video-cli embed <video-id> [--dimensions N] [--no-frames] [--no-transcript] [--no-ocr]',
     '  video-cli search <video-id> <query> [--top N] [--threshold N] [--hybrid]',
     '  video-cli grep <video-id> <query>',
+    '  video-cli context <video-id> --at <seconds> [--window N]',
+    '  video-cli chapters <video-id>',
+    '  video-cli next <video-id> --from <seconds>',
     '  video-cli describe <video-id> [--interval N] [--model <name>]',
     '  video-cli eval:generate <video-id> [--model <name>]',
     '  video-cli eval:run <video-id> [--top N]',
@@ -607,9 +616,7 @@ async function runEmbed(positionals, flags, config) {
 async function runSearch(positionals, flags, config) {
   const id = requirePositional(positionals, 0, '<video-id>');
   const query = requirePositional(positionals, 1, '<query>');
-  const topK = parseNumberFlag(flags, 'top', 10);
-  const threshold = parseNumberFlag(flags, 'threshold', 0.0);
-  const hybrid = parseBooleanFlag(flags, 'hybrid', true);
+  const topK = parseNumberFlag(flags, 'top', 5);
 
   const embeddings = readArtifactJson(id, 'embeddings.json');
   if (!embeddings || !Array.isArray(embeddings.items) || embeddings.items.length === 0) {
@@ -625,27 +632,69 @@ async function runSearch(positionals, flags, config) {
     dimensions: embeddings.dimensions,
   });
 
-  const semanticMatches = rankBySimilarity(queryVec, embeddings.items, topK * 2);
+  const ocr = readArtifactJson(id, 'ocr.json');
+  const transcript = readArtifactJson(id, 'transcript.json');
+  const descriptions = readArtifactJson(id, 'descriptions.json');
+  const lexicalMatches = findMatches({ query, ocr, transcript });
 
-  let matches;
-  if (hybrid) {
-    const ocr = readArtifactJson(id, 'ocr.json');
-    const transcript = readArtifactJson(id, 'transcript.json');
-    const lexicalMatches = findMatches({ query, ocr, transcript });
-    matches = mergeSemanticAndLexical({ semanticMatches, lexicalMatches, topK, threshold });
-  } else {
-    matches = semanticMatches
-      .filter(item => item.score >= threshold)
-      .slice(0, topK);
-  }
+  const matches = semanticSearch({
+    query,
+    queryVec,
+    embeddings: embeddings.items,
+    lexicalMatches,
+    descriptions,
+    topK,
+  });
 
   printJson({
     id,
     query,
-    mode: hybrid ? 'hybrid' : 'semantic',
     matchCount: matches.length,
     matches,
   });
+}
+
+async function runContext(positionals, flags) {
+  const id = requirePositional(positionals, 0, '<video-id>');
+  const atSec = parseNumberFlag(flags, 'at', Number.NaN);
+  if (!Number.isFinite(atSec)) {
+    throw new Error('Missing required numeric flag: --at');
+  }
+  const windowSec = parseNumberFlag(flags, 'window', 10);
+
+  const manifest = loadManifest(id);
+  const transcript = readArtifactJson(id, 'transcript.json');
+  const ocr = readArtifactJson(id, 'ocr.json');
+  const descriptions = readArtifactJson(id, 'descriptions.json');
+
+  const context = getContext({ atSec, windowSec, transcript, ocr, descriptions, manifest });
+  printJson({ id, ...context });
+}
+
+async function runChapters(positionals) {
+  const id = requirePositional(positionals, 0, '<video-id>');
+  const manifest = loadManifest(id);
+  const transcript = readArtifactJson(id, 'transcript.json');
+  const descriptions = readArtifactJson(id, 'descriptions.json');
+
+  const chapters = buildChapters({ manifest, transcript, descriptions });
+  printJson({ id, durationSec: manifest.media.durationSec, chapterCount: chapters.length, chapters });
+}
+
+async function runNext(positionals, flags) {
+  const id = requirePositional(positionals, 0, '<video-id>');
+  const fromSec = parseNumberFlag(flags, 'from', Number.NaN);
+  if (!Number.isFinite(fromSec)) {
+    throw new Error('Missing required numeric flag: --from');
+  }
+
+  const manifest = loadManifest(id);
+  const transcript = readArtifactJson(id, 'transcript.json');
+  const ocr = readArtifactJson(id, 'ocr.json');
+  const descriptions = readArtifactJson(id, 'descriptions.json');
+
+  const next = findNext({ fromSec, transcript, ocr, descriptions, manifest });
+  printJson({ id, fromSec, next });
 }
 
 async function runDescribe(positionals, flags, config) {

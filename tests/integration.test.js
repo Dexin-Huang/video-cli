@@ -101,7 +101,6 @@ test('ingest, list, inspect, frame, and clip work end to end', () => {
   const search = runCli(['search', ingest.id, 'mock']);
   assert.equal(search.matchCount >= 1, true);
   assert.equal(typeof search.matches[0].score, 'number');
-  assert.equal(search.mode, 'hybrid');
 
   const frame = runCli(['frame', ingest.id, '--at', '1.25']);
   assert.equal(fs.existsSync(frame.output), true);
