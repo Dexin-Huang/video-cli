@@ -31,6 +31,7 @@ const { createProvider } = require('./lib/providers');
 const { renderBundleMarkdown } = require('./lib/render');
 const { findMatches, semanticSearch, getContext, buildChapters, findNext } = require('./lib/search');
 const { buildEmbeddings, embedText, rankBySimilarity } = require('./lib/embed');
+const { askQuestion } = require('./lib/ask');
 const { describeFrames, extractDenseFrames, generateEvalQueries } = require('./lib/describe');
 
 async function main(argv) {
@@ -49,6 +50,10 @@ async function main(argv) {
   switch (command) {
     case 'ingest':
       return runIngest(positionals, flags);
+    case 'setup':
+      return runSetup(positionals, flags, config);
+    case 'ask':
+      return runAsk(positionals, flags, config);
     case 'list':
       return runList();
     case 'config':
@@ -99,6 +104,8 @@ function printHelp() {
     'video-cli',
     '',
     'Commands:',
+    '  video-cli setup <file>                              (ingest + transcribe + ocr + embed in one step)',
+    '  video-cli ask <video-id> <question>                  (answer with grounded citations)',
     '  video-cli ingest <file> [--watchpoints N] [--scene-threshold N]',
     '  video-cli list',
     '  video-cli config',
@@ -265,6 +272,125 @@ async function runIngest(positionals, flags) {
 
   saveManifest(manifest);
   printJson(manifest);
+}
+
+async function runSetup(positionals, flags, config) {
+  const inputFile = requirePositional(positionals, 0, '<file>');
+
+  // Step 1: Ingest
+  console.error('setup: ingesting...');
+  await runIngest(positionals, flags);
+
+  // Find the ID from the ingested file
+  const resolvedInput = path.resolve(inputFile);
+  const identity = getFileIdentity(resolvedInput);
+  const id = buildVideoId(identity);
+
+  // Step 2: Transcribe
+  console.error('setup: transcribing...');
+  await runTranscribe([id], { 'trim-silence': true }, config);
+
+  // Step 3: OCR
+  console.error('setup: running OCR...');
+  await runOcr([id], {}, config);
+
+  // Step 4: Embed
+  console.error('setup: embedding...');
+  await runEmbed([id], {}, config);
+
+  const manifest = loadManifest(id);
+  const transcript = readArtifactJson(id, 'transcript.json');
+  const ocr = readArtifactJson(id, 'ocr.json');
+  const embeddings = readArtifactJson(id, 'embeddings.json');
+
+  printJson({
+    id,
+    sourceName: manifest.sourceName,
+    durationSec: manifest.media.durationSec,
+    watchpoints: manifest.watchpoints.length,
+    utterances: transcript ? transcript.items.reduce((s, i) => s + (i.utterances || []).length, 0) : 0,
+    ocrItems: ocr ? ocr.items.length : 0,
+    embeddings: embeddings ? embeddings.items.length : 0,
+    ready: true,
+  });
+}
+
+async function runAsk(positionals, flags, config) {
+  const id = requirePositional(positionals, 0, '<video-id>');
+  const query = requirePositional(positionals, 1, '<question>');
+
+  const embeddings = readArtifactJson(id, 'embeddings.json');
+  if (!embeddings || !Array.isArray(embeddings.items) || embeddings.items.length === 0) {
+    throw new Error('No embeddings found. Run `video-cli setup` or `video-cli embed` first.');
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY || null;
+  const queryVec = await embedText({
+    apiKey,
+    text: query,
+    model: config.embed.model,
+    taskType: config.embed.taskTypeQuery,
+    dimensions: embeddings.dimensions,
+  });
+
+  const ocr = readArtifactJson(id, 'ocr.json');
+  const transcript = readArtifactJson(id, 'transcript.json');
+  const descriptions = readArtifactJson(id, 'descriptions.json');
+  const manifest = loadManifest(id);
+  const lexicalMatches = findMatches({ query, ocr, transcript });
+
+  const searchResults = semanticSearch({
+    query, queryVec, embeddings: embeddings.items,
+    lexicalMatches, descriptions, topK: 5,
+  });
+
+  // Gather context around the top result
+  const topAt = searchResults[0]
+    ? (searchResults[0].startSec ?? searchResults[0].atSec ?? 0)
+    : 0;
+
+  let context = null;
+  if (topAt > 0 || searchResults.length > 0) {
+    // JIT enrich if source exists and no descriptions for this window
+    const startSec = Math.max(0, topAt - 10);
+    const endSec = topAt + 15;
+
+    if (manifest.sourcePath && fs.existsSync(manifest.sourcePath)) {
+      const hasCoverage = descriptions && Array.isArray(descriptions.items) &&
+        descriptions.items.some(d => d.atSec >= startSec && d.atSec <= endSec);
+      if (!hasCoverage) {
+        const { enrichRegion } = require('./lib/describe');
+        const descModel = config.ocr.model || 'gemini-3.1-flash-lite-preview';
+        const newItems = await enrichRegion({
+          apiKey, model: descModel,
+          sourcePath: manifest.sourcePath, videoId: id,
+          startSec, endSec, intervalSec: 2,
+          existingDescriptions: descriptions,
+        });
+        if (newItems.length > 0) {
+          const desc = descriptions || { id, model: descModel, intervalSec: 2, createdAt: new Date().toISOString(), frameCount: 0, items: [] };
+          desc.items.push(...newItems);
+          desc.items.sort((a, b) => a.atSec - b.atSec);
+          desc.frameCount = desc.items.length;
+          writeArtifactJson(id, 'descriptions.json', desc);
+        }
+      }
+    }
+
+    const freshDescriptions = readArtifactJson(id, 'descriptions.json');
+    context = getContext({ atSec: topAt, windowSec: 12, transcript, ocr, descriptions: freshDescriptions, manifest });
+  }
+
+  const askModel = config.ocr.model || 'gemini-3.1-flash-lite-preview';
+  const result = await askQuestion({
+    apiKey, model: askModel, query, searchResults, context,
+  });
+
+  printJson({
+    id,
+    query,
+    ...result,
+  });
 }
 
 async function runList() {
