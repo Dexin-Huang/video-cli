@@ -15,12 +15,14 @@ const {
   buildSpeechSegments,
   buildVideoId,
   detectSilences,
+  detectSceneChangesWithScores,
   detectSceneChanges,
   extractAudioChunk,
   extractClip,
   extractFrame,
   getFileIdentity,
   materializeWatchpoints,
+  pickAdaptiveWatchpoints,
   pickWatchpoints,
   probeVideo,
 } = require('./lib/media');
@@ -76,7 +78,7 @@ async function main(argv) {
     case 'search':
       return runSearch(positionals, flags, config);
     case 'context':
-      return runContext(positionals, flags);
+      return runContext(positionals, flags, config);
     case 'chapters':
       return runChapters(positionals);
     case 'next':
@@ -200,6 +202,7 @@ function printJson(value) {
 async function runIngest(positionals, flags) {
   const inputFile = requirePositional(positionals, 0, '<file>');
   const resolvedInput = path.resolve(inputFile);
+  const adaptive = parseBooleanFlag(flags, 'adaptive', true);
   const sceneThreshold = parseNumberFlag(flags, 'scene-threshold', 0.35);
   const requestedWatchpoints = parseNumberFlag(flags, 'watchpoints', 12);
 
@@ -207,8 +210,24 @@ async function runIngest(positionals, flags) {
   const id = buildVideoId(identity);
   const probe = probeVideo(resolvedInput);
   const durationSec = Number(probe.format.duration || 0);
-  const changePointsSec = detectSceneChanges(resolvedInput, sceneThreshold);
-  const watchpoints = pickWatchpoints(durationSec, changePointsSec, requestedWatchpoints);
+
+  let changePointsSec;
+  let watchpoints;
+  let sceneScores = null;
+
+  if (adaptive) {
+    sceneScores = detectSceneChangesWithScores(resolvedInput);
+    changePointsSec = sceneScores.filter(e => e.score >= sceneThreshold).map(e => e.atSec);
+    watchpoints = pickAdaptiveWatchpoints(durationSec, sceneScores, {
+      minCount: Math.max(6, Math.ceil(durationSec / 60)),
+      maxCount: Math.max(requestedWatchpoints, Math.ceil(durationSec / 15)),
+      sigmaMultiplier: 1.0,
+      minGapSec: 3,
+    });
+  } else {
+    changePointsSec = detectSceneChanges(resolvedInput, sceneThreshold);
+    watchpoints = pickWatchpoints(durationSec, changePointsSec, requestedWatchpoints);
+  }
 
   const videoStream = probe.streams.find(stream => stream.codec_type === 'video') || null;
   const audioStream = probe.streams.find(stream => stream.codec_type === 'audio') || null;
@@ -654,18 +673,54 @@ async function runSearch(positionals, flags, config) {
   });
 }
 
-async function runContext(positionals, flags) {
+async function runContext(positionals, flags, config) {
   const id = requirePositional(positionals, 0, '<video-id>');
   const atSec = parseNumberFlag(flags, 'at', Number.NaN);
   if (!Number.isFinite(atSec)) {
     throw new Error('Missing required numeric flag: --at');
   }
   const windowSec = parseNumberFlag(flags, 'window', 10);
+  const enrich = parseBooleanFlag(flags, 'enrich', true);
 
   const manifest = loadManifest(id);
   const transcript = readArtifactJson(id, 'transcript.json');
   const ocr = readArtifactJson(id, 'ocr.json');
-  const descriptions = readArtifactJson(id, 'descriptions.json');
+  let descriptions = readArtifactJson(id, 'descriptions.json');
+
+  // JIT enrichment: if source video exists and we don't have descriptions
+  // for this window, generate them on demand and cache
+  const startSec = Math.max(0, atSec - windowSec);
+  const endSec = atSec + windowSec;
+
+  if (enrich && manifest.sourcePath && fs.existsSync(manifest.sourcePath)) {
+    const hasCoverage = descriptions && Array.isArray(descriptions.items) &&
+      descriptions.items.some(d => d.atSec >= startSec && d.atSec <= endSec);
+
+    if (!hasCoverage) {
+      const { enrichRegion } = require('./lib/describe');
+      const apiKey = process.env.GEMINI_API_KEY || null;
+      const model = (config && config.ocr && config.ocr.model) || 'gemini-3.1-flash-lite-preview';
+
+      const newItems = await enrichRegion({
+        apiKey, model,
+        sourcePath: manifest.sourcePath,
+        videoId: id,
+        startSec, endSec,
+        intervalSec: 2,
+        existingDescriptions: descriptions,
+      });
+
+      if (newItems.length > 0) {
+        if (!descriptions) {
+          descriptions = { id, model, intervalSec: 2, createdAt: new Date().toISOString(), frameCount: 0, items: [] };
+        }
+        descriptions.items.push(...newItems);
+        descriptions.items.sort((a, b) => a.atSec - b.atSec);
+        descriptions.frameCount = descriptions.items.length;
+        writeArtifactJson(id, 'descriptions.json', descriptions);
+      }
+    }
+  }
 
   const context = getContext({ atSec, windowSec, transcript, ocr, descriptions, manifest });
   printJson({ id, ...context });

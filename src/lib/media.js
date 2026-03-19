@@ -38,6 +38,10 @@ function probeVideo(filePath) {
 }
 
 function detectSceneChanges(filePath, threshold) {
+  return detectSceneChangesAtThreshold(filePath, threshold);
+}
+
+function detectSceneChangesAtThreshold(filePath, threshold) {
   const nullSink = os.platform() === 'win32' ? 'NUL' : '/dev/null';
   const filter = `select='gt(scene,${threshold})',showinfo`;
   const result = runProcess('ffmpeg', [
@@ -69,6 +73,142 @@ function detectSceneChanges(filePath, threshold) {
 
   points.sort((left, right) => left - right);
   return points;
+}
+
+function detectSceneChangesWithScores(filePath) {
+  // Sample at 1fps, compute scene score for every frame, return all with scores.
+  // The caller uses the distribution (mean/σ) to pick relative outliers.
+  const nullSink = os.platform() === 'win32' ? 'NUL' : '/dev/null';
+  const result = runProcess('ffmpeg', [
+    '-hide_banner',
+    '-i', filePath,
+    '-filter:v', 'fps=1,select=1,showinfo',
+    '-vsync', 'vfr',
+    '-f', 'null',
+    nullSink,
+  ], { allowFailure: true });
+
+  // Extract pts_time from showinfo output
+  const times = [...result.stderr.matchAll(/pts_time:([0-9]+(?:\.[0-9]+)?)/g)]
+    .map(m => Number(m[1]))
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b);
+
+  if (times.length < 2) return [];
+
+  // Now run scene detection at a very low threshold to get scores for most transitions
+  const sceneResult = runProcess('ffmpeg', [
+    '-hide_banner',
+    '-i', filePath,
+    '-filter:v', `select='gt(scene,0.02)',metadata=print:file=-`,
+    '-vsync', 'vfr',
+    '-f', 'null',
+    nullSink,
+  ], { allowFailure: true });
+
+  // Parse scene scores from metadata output (stderr + stdout)
+  const output = sceneResult.stderr + '\n' + sceneResult.stdout;
+  const entries = [];
+  let currentTime = null;
+
+  for (const line of output.split(/\r?\n/)) {
+    const timeMatch = line.match(/pts_time:([0-9]+(?:\.[0-9]+)?)/);
+    if (timeMatch) {
+      currentTime = Number(timeMatch[1]);
+      continue;
+    }
+    const scoreMatch = line.match(/scene_score=([0-9]+(?:\.[0-9]+)?)/);
+    if (scoreMatch && currentTime !== null) {
+      entries.push({ atSec: Number(currentTime.toFixed(3)), score: Number(scoreMatch[1]) });
+      currentTime = null;
+    }
+  }
+
+  // If metadata parsing failed, fall back to multi-threshold approach
+  if (entries.length === 0) {
+    const low = detectSceneChangesAtThreshold(filePath, 0.10);
+    const mid = detectSceneChangesAtThreshold(filePath, 0.25);
+    const high = detectSceneChangesAtThreshold(filePath, 0.45);
+    const byKey = new Map();
+    for (const t of low) byKey.set(t.toFixed(3), { atSec: t, score: 0.10 });
+    for (const t of mid) { const k = t.toFixed(3); if (byKey.has(k)) byKey.get(k).score = 0.25; else byKey.set(k, { atSec: t, score: 0.25 }); }
+    for (const t of high) { const k = t.toFixed(3); if (byKey.has(k)) byKey.get(k).score = 0.45; else byKey.set(k, { atSec: t, score: 0.45 }); }
+    return Array.from(byKey.values()).sort((a, b) => a.atSec - b.atSec);
+  }
+
+  return entries;
+}
+
+function pickAdaptiveWatchpoints(durationSec, sceneScores, options = {}) {
+  const minCount = options.minCount || 6;
+  const maxCount = options.maxCount || Math.max(12, Math.ceil(durationSec / 20));
+  const sigmaMultiplier = options.sigmaMultiplier || 1.0;
+  const minGapSec = options.minGapSec || 3;
+
+  const byKey = new Map();
+
+  const add = (atSec, kind, reason, score) => {
+    if (!Number.isFinite(atSec) || atSec < 0) return;
+    const bounded = durationSec > 0 ? Math.min(atSec, durationSec) : atSec;
+    const key = bounded.toFixed(3);
+    if (!byKey.has(key)) {
+      byKey.set(key, { atSec: Number(key), kind, reason, score: score || 0 });
+    }
+  };
+
+  // Always include anchors
+  add(0, 'anchor', 'start', 0);
+  if (durationSec > 0) {
+    add(durationSec / 2, 'anchor', 'middle', 0);
+    add(Math.max(durationSec - 0.01, 0), 'anchor', 'end', 0);
+  }
+
+  if (sceneScores.length > 0) {
+    // Self-normalized: pick outliers relative to this video's own distribution
+    const scores = sceneScores.map(e => e.score);
+    const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
+    const std = Math.sqrt(scores.reduce((a, b) => a + (b - mean) ** 2, 0) / scores.length) || 0.01;
+    const threshold = mean + sigmaMultiplier * std;
+
+    // Add all frames above the relative threshold
+    for (const entry of sceneScores) {
+      if (entry.score >= threshold) {
+        add(entry.atSec, 'scene', 'relative-outlier', entry.score);
+      }
+    }
+  }
+
+  // If we don't have enough, fill with uniform coverage
+  let items = Array.from(byKey.values()).sort((a, b) => a.atSec - b.atSec);
+  if (items.length < minCount && durationSec > 0) {
+    const needed = minCount - items.length;
+    for (let i = 1; i <= needed; i += 1) {
+      const frac = i / (needed + 1);
+      add(durationSec * frac, 'uniform', 'coverage', 0);
+    }
+    items = Array.from(byKey.values()).sort((a, b) => a.atSec - b.atSec);
+  }
+
+  // Enforce minimum gap between watchpoints
+  if (minGapSec > 0 && items.length > maxCount) {
+    const filtered = [items[0]];
+    for (let i = 1; i < items.length; i += 1) {
+      if (items[i].atSec - filtered[filtered.length - 1].atSec >= minGapSec) {
+        filtered.push(items[i]);
+      }
+    }
+    items = filtered;
+  }
+
+  // Cap at maxCount, keeping highest-score items
+  if (items.length > maxCount) {
+    items.sort((a, b) => b.score - a.score);
+    const kept = items.slice(0, maxCount);
+    kept.sort((a, b) => a.atSec - b.atSec);
+    items = kept;
+  }
+
+  return items;
 }
 
 function pickWatchpoints(durationSec, changePointsSec, requestedCount) {
@@ -413,11 +553,13 @@ module.exports = {
   buildVideoId,
   detectSilences,
   detectSceneChanges,
+  detectSceneChangesWithScores,
   extractAudioChunk,
   extractClip,
   extractFrame,
   getFileIdentity,
   materializeWatchpoints,
+  pickAdaptiveWatchpoints,
   pickWatchpoints,
   probeVideo,
 };

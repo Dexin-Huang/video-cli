@@ -93,6 +93,43 @@ function extractDenseFrames(sourcePath, durationSec, intervalSec, videoId) {
   return frames;
 }
 
+async function enrichRegion({ apiKey, model, sourcePath, videoId, startSec, endSec, intervalSec, existingDescriptions }) {
+  const existing = new Set();
+  if (existingDescriptions && Array.isArray(existingDescriptions.items)) {
+    for (const d of existingDescriptions.items) existing.add(d.atSec.toFixed(3));
+  }
+
+  const interval = intervalSec || 2;
+  const frames = [];
+  for (let t = startSec; t <= endSec; t += interval) {
+    const atSec = Number(t.toFixed(3));
+    if (existing.has(atSec.toFixed(3))) continue;
+
+    const fileName = `dense-${String(atSec.toFixed(3)).replace('.', '_')}.jpg`;
+    const framePath = createArtifactPath(videoId, 'dense-frames', fileName);
+
+    if (!fs.existsSync(framePath)) {
+      const result = spawnSync('ffmpeg', [
+        '-y', '-ss', String(atSec), '-i', sourcePath,
+        '-frames:v', '1', '-q:v', '3', framePath,
+      ], { encoding: 'utf8', windowsHide: true });
+      if (result.status !== 0 && result.status !== null) continue;
+    }
+    if (fs.existsSync(framePath)) frames.push({ atSec, framePath });
+  }
+
+  if (frames.length === 0) return [];
+
+  const prompt = [
+    'Describe what you see in this video frame in 2-3 sentences.',
+    'Include: any on-screen text, UI elements, diagrams, people, and actions.',
+    'Be specific about visual details. If there is text, quote it exactly.',
+  ].join(' ');
+
+  const described = await describeFrames({ apiKey, manifest: null, frames, model, prompt });
+  return described;
+}
+
 async function generateEvalQueries({ apiKey, model, descriptions, transcript }) {
   if (process.env.VIDEO_CLI_MOCK_GEMINI === '1') {
     return [
@@ -181,6 +218,7 @@ Return ONLY the JSON array, no other text.`;
 
 module.exports = {
   describeFrames,
+  enrichRegion,
   extractDenseFrames,
   generateEvalQueries,
 };
