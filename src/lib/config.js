@@ -4,7 +4,8 @@ const path = require('node:path');
 const DEFAULT_PRESET = 'balanced';
 
 const BUILTIN_PRESETS = {
-  // Golden path: ElevenLabs for transcription, Gemini for vision + embeddings
+  // Golden path: Gemini for everything. One API key, one provider.
+  // Override with --provider elevenlabs for word-level timestamps + audio events.
   balanced: {
     preset: 'balanced',
     ocr: {
@@ -13,8 +14,8 @@ const BUILTIN_PRESETS = {
       watchpointLimit: 8,
     },
     transcribe: {
-      provider: 'elevenlabs',
-      model: 'scribe_v2',
+      provider: 'gemini-transcribe',
+      model: 'gemini-3.1-flash-lite-preview',
       chunkSeconds: 480,
       trimSilence: false,
       minSilenceSec: 1.5,
