@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { fetchWithTimeout, guessMimeType } = require('./net');
+const { fetchWithRetry, guessMimeType } = require('./net');
 
 function createElevenLabsProvider() {
   if (process.env.VIDEO_CLI_MOCK_ELEVENLABS === '1') {
@@ -9,7 +9,7 @@ function createElevenLabsProvider() {
 
   const apiKey = process.env.ELEVENLABS_API_KEY;
   if (!apiKey) {
-    throw new Error('Missing ELEVENLABS_API_KEY. Set it before using ElevenLabs-backed commands.');
+    throw new Error('Missing ELEVENLABS_API_KEY. Add it to .env or set the environment variable.');
   }
 
   return {
@@ -34,14 +34,14 @@ function createElevenLabsProvider() {
         formData.append('language_code', language);
       }
 
-      const response = await fetchWithTimeout(
+      const response = await fetchWithRetry(
         'https://api.elevenlabs.io/v1/speech-to-text',
         {
           method: 'POST',
           headers: { 'xi-api-key': apiKey },
           body: formData,
         },
-        60000, // 60s timeout for transcription
+        { timeoutMs: 60000 },
       );
 
       const payload = await response.json();

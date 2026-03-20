@@ -1,0 +1,14 @@
+data/
+.tmp_*/
+reference/
+research/
+evals/
+goldens/
+tests/
+docs/
+.env
+.claude/
+.codex/
+.git/
+SESSION_SOURCES.md
+*.tsv

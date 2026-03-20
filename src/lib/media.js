@@ -532,12 +532,15 @@ function runProcess(command, args, options = {}) {
   });
 
   if (result.error) {
+    if (result.error.code === 'ENOENT') {
+      throw new Error(`${command} not found. Is ${command} installed and on PATH?`);
+    }
     throw result.error;
   }
 
   if (result.status !== 0 && !options.allowFailure) {
     const details = result.stderr || result.stdout || `Exit code ${result.status}`;
-    throw new Error(`${command} failed: ${details.trim()}`);
+    throw new Error(`${command} failed. Is ${command} installed and on PATH? Details: ${details.trim()}`);
   }
 
   return {

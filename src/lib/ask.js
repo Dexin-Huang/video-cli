@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { fetchWithTimeout, extractGeminiText, extractGeminiError } = require('./net');
+const { fetchWithRetry, extractGeminiText, extractGeminiError } = require('./net');
 
 async function askQuestion({ apiKey, model, query, searchResults, context, videoId }) {
   if (process.env.VIDEO_CLI_MOCK_GEMINI === '1') {
@@ -47,7 +47,7 @@ Rules:
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
-  const response = await fetchWithTimeout(url, {
+  const response = await fetchWithRetry(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

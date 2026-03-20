@@ -233,7 +233,7 @@ async function runTranscribe(positionals, flags, config, { requirePositional, pa
         detectLanguage,
         language,
         prompt: transcribePrompt,
-      }), 5);
+      }), 5, 'transcribing');
 
     const audioEventItems = [];
 

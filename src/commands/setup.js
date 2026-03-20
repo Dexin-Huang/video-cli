@@ -31,6 +31,8 @@ async function runSetup(positionals, flags, config, helpers) {
   // Find the ID from the ingested file
   const identity = getFileIdentity(resolvedInput);
   const id = buildVideoId(identity);
+  const manifest = loadManifest(id);
+  console.error('setup: ingested ' + id + ' (' + manifest.watchpoints.length + ' watchpoints)');
 
   // Step 2: Transcribe
   console.error('setup: transcribing...');
@@ -44,7 +46,7 @@ async function runSetup(positionals, flags, config, helpers) {
   console.error('setup: embedding...');
   await runEmbed([id], {}, config, helpers);
 
-  const manifest = loadManifest(id);
+  const finalManifest = loadManifest(id);
   const transcript = readArtifactJson(id, 'transcript.json');
   const ocr = readArtifactJson(id, 'ocr.json');
   const descriptions = readArtifactJson(id, 'descriptions.json');
@@ -52,9 +54,9 @@ async function runSetup(positionals, flags, config, helpers) {
 
   printJson({
     id,
-    sourceName: manifest.sourceName,
-    durationSec: manifest.media.durationSec,
-    watchpoints: manifest.watchpoints.length,
+    sourceName: finalManifest.sourceName,
+    durationSec: finalManifest.media.durationSec,
+    watchpoints: finalManifest.watchpoints.length,
     utterances: transcript ? transcript.items.reduce((s, i) => s + (i.utterances || []).length, 0) : 0,
     ocrItems: ocr ? ocr.items.length : 0,
     descriptions: descriptions ? descriptions.items.length : 0,

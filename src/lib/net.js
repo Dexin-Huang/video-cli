@@ -44,9 +44,35 @@ function guessMimeType(filePath) {
   }
 }
 
-async function batchAsync(items, fn, concurrency = 5) {
+async function fetchWithRetry(url, options, { timeoutMs = 30000, retries = 3, backoffMs = 1000 } = {}) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await fetchWithTimeout(url, options, timeoutMs);
+      if (response.status === 429 || response.status >= 500) {
+        if (attempt < retries) {
+          const delay = backoffMs * Math.pow(2, attempt);
+          console.error(`API returned ${response.status}, retrying in ${delay}ms...`);
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
+      }
+      return response;
+    } catch (err) {
+      if (attempt < retries && (err.name === 'AbortError' || err.code === 'ECONNRESET')) {
+        const delay = backoffMs * Math.pow(2, attempt);
+        console.error(`Request failed (${err.message}), retrying in ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
+async function batchAsync(items, fn, concurrency = 5, label = null) {
   const results = [];
   for (let i = 0; i < items.length; i += concurrency) {
+    if (label) console.error(`  ${label} ${Math.min(i + concurrency, items.length)}/${items.length}...`);
     const batch = items.slice(i, i + concurrency);
     const batchResults = await Promise.all(batch.map(fn));
     results.push(...batchResults);
@@ -56,6 +82,7 @@ async function batchAsync(items, fn, concurrency = 5) {
 
 module.exports = {
   batchAsync,
+  fetchWithRetry,
   fetchWithTimeout,
   extractGeminiText,
   extractGeminiError,

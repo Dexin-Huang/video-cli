@@ -3,7 +3,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const { createArtifactPath } = require('./store');
-const { batchAsync, fetchWithTimeout, extractGeminiText, extractGeminiError } = require('./net');
+const { batchAsync, fetchWithRetry, extractGeminiText, extractGeminiError } = require('./net');
 
 async function analyzeFrames({ apiKey, frames, model }) {
   if (process.env.VIDEO_CLI_MOCK_GEMINI === '1') {
@@ -48,7 +48,7 @@ async function analyzeFrames({ apiKey, frames, model }) {
       text,
       description,
     };
-  }, 5);
+  }, 5, 'analyzing');
 
   return results;
 }
@@ -86,7 +86,7 @@ async function callGeminiDescribe({ apiKey, model, prompt, imagePath }) {
   const mimeType = guessMimeType(imagePath);
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
-  const response = await fetchWithTimeout(url, {
+  const response = await fetchWithRetry(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -220,7 +220,7 @@ Return ONLY the JSON array, no other text.`;
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
-  const response = await fetchWithTimeout(url, {
+  const response = await fetchWithRetry(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

@@ -33,7 +33,7 @@ function saveManifest(manifest) {
 function loadManifest(id) {
   const manifestPath = getManifestPath(id);
   if (!fs.existsSync(manifestPath)) {
-    throw new Error(`Unknown video id: ${id}`);
+    throw new Error(`Unknown video id: ${id}. Run 'video-cli list' to see available videos.`);
   }
   return JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 }

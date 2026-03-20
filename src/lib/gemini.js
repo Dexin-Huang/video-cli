@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { fetchWithTimeout, extractGeminiText, extractGeminiError, guessMimeType } = require('./net');
+const { fetchWithRetry, extractGeminiText, extractGeminiError, guessMimeType } = require('./net');
 
 function createGeminiProvider() {
   if (process.env.VIDEO_CLI_MOCK_GEMINI === '1') {
@@ -9,7 +9,7 @@ function createGeminiProvider() {
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    throw new Error('Missing GEMINI_API_KEY. Set it before using Gemini-backed commands.');
+    throw new Error('Missing GEMINI_API_KEY. Add it to .env or set the environment variable.');
   }
 
   return {
@@ -29,7 +29,7 @@ async function generateInlineContent({ apiKey, model, prompt, filePath, mimeType
   const data = fs.readFileSync(filePath).toString('base64');
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
-  const response = await fetchWithTimeout(url, {
+  const response = await fetchWithRetry(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

@@ -9,7 +9,7 @@ function createDeepgramProvider() {
 
   const apiKey = process.env.DEEPGRAM_API_KEY;
   if (!apiKey) {
-    throw new Error('Missing DEEPGRAM_API_KEY. Set it before using Deepgram-backed transcription.');
+    throw new Error('Missing DEEPGRAM_API_KEY. Add it to .env or set the environment variable.');
   }
 
   return {

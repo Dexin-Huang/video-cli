@@ -87,6 +87,11 @@ test('ingest, list, inspect, frame, and clip work end to end', () => {
   assert.match(transcript.items[0].text, /mock (deepgram|elevenlabs) transcript/);
   assert.equal(transcript.items[0].words[1].startSec > transcript.items[0].words[0].startSec, true);
 
+  const analyze = runCli(['analyze', ingest.id, '--limit', '2']);
+  assert.equal(analyze.frameCount, 2);
+  assert.ok(analyze.ocrItems >= 0);
+  assert.ok(analyze.descriptions >= 0);
+
   const grep = runCli(['grep', ingest.id, 'mock']);
   assert.equal(grep.matchCount >= 3, true);
 

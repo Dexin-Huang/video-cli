@@ -1,7 +1,7 @@
 {
   "name": "video-cli",
-  "version": "0.1.0",
-  "description": "Local-first video inspection CLI",
+  "version": "0.2.0",
+  "description": "Local-first video REPL for AI agents — search, ask, navigate, extract",
   "license": "MIT",
   "type": "commonjs",
   "bin": {
@@ -9,6 +9,30 @@
   },
   "engines": {
     "node": ">=22"
+  },
+  "files": [
+    "video-cli.js",
+    "src/",
+    "SKILL.md",
+    "README.md",
+    ".env.example",
+    "video-cli.config.example.json"
+  ],
+  "keywords": [
+    "video",
+    "search",
+    "cli",
+    "agent",
+    "transcription",
+    "ocr",
+    "llm",
+    "gemini",
+    "elevenlabs",
+    "repl"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Dexin-Huang/video-cli"
   },
   "scripts": {
     "test": "node --test",

@@ -1,7 +1,7 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { batchAsync, fetchWithTimeout, guessMimeType } = require('./net');
+const { batchAsync, fetchWithRetry, guessMimeType } = require('./net');
 
 const DEFAULT_MODEL = 'gemini-embedding-2-preview';
 const DEFAULT_DIMENSIONS = 768;
@@ -40,7 +40,7 @@ async function embedImage({ apiKey, imagePath, model, taskType, dimensions }) {
 async function callEmbedApi({ apiKey, model, dimensions, taskType, content }) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:embedContent?key=${encodeURIComponent(apiKey)}`;
 
-  const response = await fetchWithTimeout(url, {
+  const response = await fetchWithRetry(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content, taskType, outputDimensionality: dimensions }),
@@ -127,7 +127,7 @@ async function buildEmbeddings({ apiKey, manifest, ocr, transcript, config }) {
 
   if (transcriptPending.length > 0) {
     const vectors = await batchAsync(transcriptPending, (item) =>
-      embedText({ apiKey, text: item.text, model, taskType, dimensions }), 5);
+      embedText({ apiKey, text: item.text, model, taskType, dimensions }), 5, 'embedding');
     for (let i = 0; i < transcriptPending.length; i += 1) {
       const item = transcriptPending[i];
       items.push({
@@ -157,7 +157,7 @@ async function buildEmbeddings({ apiKey, manifest, ocr, transcript, config }) {
 
   if (ocrPending.length > 0) {
     const vectors = await batchAsync(ocrPending, (item) =>
-      embedText({ apiKey, text: item.text, model, taskType, dimensions }), 5);
+      embedText({ apiKey, text: item.text, model, taskType, dimensions }), 5, 'embedding');
     for (let i = 0; i < ocrPending.length; i += 1) {
       const item = ocrPending[i];
       items.push({
@@ -186,7 +186,7 @@ async function buildEmbeddings({ apiKey, manifest, ocr, transcript, config }) {
 
   if (framePending.length > 0) {
     const vectors = await batchAsync(framePending, (item) =>
-      embedImage({ apiKey, imagePath: item.framePath, model, taskType, dimensions }), 5);
+      embedImage({ apiKey, imagePath: item.framePath, model, taskType, dimensions }), 5, 'embedding');
     for (let i = 0; i < framePending.length; i += 1) {
       const item = framePending[i];
       items.push({

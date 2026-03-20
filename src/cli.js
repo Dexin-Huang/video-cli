@@ -9,6 +9,24 @@ const { runIngest, runTranscribe, runOcr, runEmbed, runDescribe } = require('./c
 const { runList, runStatus, runInspect, runConfig, runBrief, runTimeline, runWatchpoints, runBundle } = require('./commands/inspect');
 const { runEvalGenerate, runEvalRun } = require('./commands/eval');
 
+const COMMAND_HELP = {
+  setup: 'video-cli setup <file>\n\nRun the full pipeline: ingest + transcribe + analyze + embed.\nCreates all artifacts needed for search and ask.\n\nFlags:\n  --adaptive         Adaptive watchpoint selection (default: true)\n  --watchpoints N    Max watchpoints (default: auto)\n  --scene-threshold  Scene detection threshold (default: 0.35)',
+  ask: 'video-cli ask <video-id> <question>\n\nAnswer a question with grounded citations.\nInternally: search → context → synthesize via Gemini Flash-Lite.\n\nReturns: answer, citations with timestamps, suggested follow-ups, frame paths.',
+  search: 'video-cli search <video-id> <query> [--top N]\n\nSemantic + lexical + description search.\nReturns ranked matches with scores and timestamps.',
+  context: 'video-cli context <video-id> --at <seconds> [--window N] [--no-enrich]\n\nEverything around a timestamp: transcript, OCR, frame descriptions, scene changes.\nJIT enrichment: describes frames on demand if not cached.',
+  chapters: 'video-cli chapters <video-id>\n\nSemantic chapter segmentation based on transcript + visual cues.\nReturns chapter boundaries with titles and summaries.',
+  next: 'video-cli next <video-id> --from <seconds>\n\nFind the next significant moment after a given timestamp.\nUses scene changes, transcript shifts, and visual novelty.',
+  grep: 'video-cli grep <video-id> <text>\n\nExact substring search across transcript and OCR text.\nReturns matching segments with timestamps.',
+  frame: 'video-cli frame <video-id> --at <seconds> [--out <path>]\n\nExtract a single frame as JPG at the given timestamp.\nDefaults to writing in the current directory.',
+  clip: 'video-cli clip <video-id> --at <seconds> [--duration N] [--out <path>]\n\nExtract a video clip starting at the given timestamp.\nDefault duration: 10 seconds.',
+  ingest: 'video-cli ingest <file>\n\nProbe video metadata and extract adaptive watchpoint frames.\nFirst step of the pipeline — run before transcribe/analyze.\n\nFlags:\n  --adaptive         Adaptive watchpoint selection (default: true)\n  --watchpoints N    Max watchpoints (default: auto)\n  --scene-threshold  Scene detection threshold (default: 0.35)',
+  transcribe: 'video-cli transcribe <video-id>\n\nTranscribe audio track using ElevenLabs or Gemini.\nProduces word-level timestamps.',
+  analyze: 'video-cli analyze <video-id>\n\nRun OCR + frame description in one pass via Gemini.\nProduces per-frame OCR text and visual descriptions.',
+  embed: 'video-cli embed <video-id>\n\nBuild text embeddings for transcript and OCR segments.\nRequired for semantic search.',
+  status: 'video-cli status <video-id>\n\nShow artifact readiness and pipeline completion status.\nLists which steps have been run and what is missing.',
+  inspect: 'video-cli inspect <video-id> [--timeline] [--watchpoints]\n\nFull manifest dump for a video.\nOptionally include timeline events or watchpoint details.',
+};
+
 // Commands whose first positional is a video-id and can default to VIDEO_CLI_ID
 const VIDEO_ID_COMMANDS = new Set([
   'ask', 'inspect', 'timeline', 'watchpoints', 'bundle', 'brief',
@@ -33,6 +51,11 @@ async function main(argv) {
   // Default video-id from VIDEO_CLI_ID env var
   if (process.env.VIDEO_CLI_ID && VIDEO_ID_COMMANDS.has(command) && positionals.length === 0) {
     positionals.unshift(process.env.VIDEO_CLI_ID);
+  }
+
+  if (flags.help && COMMAND_HELP[command]) {
+    console.log(COMMAND_HELP[command]);
+    return;
   }
 
   const helpers = { requirePositional, parseNumberFlag, parseBooleanFlag, printJson };
@@ -89,7 +112,7 @@ async function main(argv) {
     case 'eval:run':
       return runEvalRun(positionals, flags, config, helpers);
     default:
-      throw new Error(`Unknown command: ${command}`);
+      throw new Error(`Unknown command: ${command}. Run 'video-cli --help' to see available commands.`);
   }
 }
 
