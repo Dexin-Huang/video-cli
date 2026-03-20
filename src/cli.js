@@ -298,9 +298,9 @@ async function runIngest(positionals, flags) {
 async function runSetup(positionals, flags, config) {
   const inputFile = requirePositional(positionals, 0, '<file>');
 
-  // Cost estimate based on probe duration
-  const resolvedForEstimate = path.resolve(inputFile);
-  const probeResult = probeVideo(resolvedForEstimate);
+  // Cost estimate based on probe duration (reuses probe from ingest)
+  const resolvedInput = path.resolve(inputFile);
+  const probeResult = probeVideo(resolvedInput);
   const estDuration = Number(probeResult.format.duration || 0);
   const estMinutes = estDuration / 60;
   const estTranscribe = estMinutes * 0.004;
@@ -317,7 +317,6 @@ async function runSetup(positionals, flags, config) {
   await runIngest(positionals, flags);
 
   // Find the ID from the ingested file
-  const resolvedInput = path.resolve(inputFile);
   const identity = getFileIdentity(resolvedInput);
   const id = buildVideoId(identity);
 
@@ -370,7 +369,7 @@ async function runAsk(positionals, flags, config) {
 
   const ocr = readArtifactJson(id, 'ocr.json');
   const transcript = readArtifactJson(id, 'transcript.json');
-  const descriptions = readArtifactJson(id, 'descriptions.json');
+  let descriptions = readArtifactJson(id, 'descriptions.json');
   const manifest = loadManifest(id);
   const lexicalMatches = findMatches({ query, ocr, transcript });
 
@@ -412,8 +411,9 @@ async function runAsk(positionals, flags, config) {
       }
     }
 
-    const freshDescriptions = readArtifactJson(id, 'descriptions.json');
-    context = getContext({ atSec: topAt, windowSec: 12, transcript, ocr, descriptions: freshDescriptions, manifest });
+    // Re-read only if enrichment wrote new items, otherwise use what we have
+    if (!descriptions) descriptions = readArtifactJson(id, 'descriptions.json');
+    context = getContext({ atSec: topAt, windowSec: 12, transcript, ocr, descriptions, manifest });
   }
 
   const askModel = config.ocr.model || 'gemini-3.1-flash-lite-preview';
