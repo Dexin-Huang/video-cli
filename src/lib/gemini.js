@@ -22,18 +22,6 @@ function createGeminiProvider() {
         }),
       };
     },
-
-    async transcribeAudio({ audioPath, model, prompt }) {
-      return {
-        text: await generateInlineContent({
-          apiKey, model, prompt,
-          filePath: audioPath,
-          mimeType: guessMimeType(audioPath),
-        }),
-        words: [],
-        utterances: [],
-      };
-    },
   };
 }
 
@@ -67,10 +55,6 @@ function createMockGeminiProvider() {
     async ocrImage({ imagePath }) {
       const name = path.basename(imagePath, path.extname(imagePath));
       return { text: `mock ocr for ${name}` };
-    },
-    async transcribeAudio({ audioPath }) {
-      const name = path.basename(audioPath, path.extname(audioPath));
-      return { text: `mock transcript for ${name}`, words: [], utterances: [] };
     },
   };
 }

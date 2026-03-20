@@ -32,14 +32,14 @@ const { renderBundleMarkdown } = require('./lib/render');
 const { findMatches, semanticSearch, getContext, buildChapters, findNext } = require('./lib/search');
 const { buildEmbeddings, embedText } = require('./lib/embed');
 const { askQuestion } = require('./lib/ask');
-const { describeFrames, extractDenseFrames, generateEvalQueries } = require('./lib/describe');
+const { analyzeFrames, describeFrames, extractDenseFrames, generateEvalQueries } = require('./lib/describe');
 const { batchAsync } = require('./lib/net');
 
 // Commands whose first positional is a video-id and can default to VIDEO_CLI_ID
 const VIDEO_ID_COMMANDS = new Set([
   'ask', 'inspect', 'timeline', 'watchpoints', 'bundle', 'brief',
   'ocr', 'transcribe', 'grep', 'frame', 'clip', 'embed', 'search',
-  'context', 'chapters', 'next', 'describe', 'status',
+  'context', 'chapters', 'next', 'describe', 'analyze', 'status',
   'eval:generate', 'eval:run',
 ]);
 
@@ -73,7 +73,7 @@ async function main(argv) {
     case 'config':
       return runConfig(config);
     case 'inspect':
-      return runInspect(positionals);
+      return runInspect(positionals, flags);
     case 'timeline':
       return runTimeline(positionals);
     case 'watchpoints':
@@ -84,6 +84,8 @@ async function main(argv) {
       return runBrief(positionals, flags);
     case 'ocr':
       return runOcr(positionals, flags, config);
+    case 'analyze':
+      return runAnalyze(positionals, flags, config);
     case 'transcribe':
       return runTranscribe(positionals, flags, config);
     case 'grep':
@@ -120,7 +122,7 @@ function printHelp() {
     'video-cli \u2014 video REPL for AI agents',
     '',
     'Quick Start:',
-    '  setup <file>                    Full pipeline: ingest + transcribe + ocr + embed',
+    '  setup <file>                    Full pipeline: ingest + transcribe + analyze + embed',
     '  ask <video-id> <question>       Answer with grounded citations',
     '',
     'Navigation:',
@@ -136,16 +138,15 @@ function printHelp() {
     '',
     'Pipeline (run individually if needed):',
     '  ingest <file>                   Probe video + adaptive watchpoints',
-    '  transcribe <video-id>           Audio \u2192 transcript (Deepgram)',
-    '  ocr <video-id>                  Frames \u2192 text (Gemini)',
+    '  transcribe <video-id>           Audio \u2192 transcript',
+    '  analyze <video-id>              OCR + describe in one pass (Gemini)',
     '  embed <video-id>                Build embeddings (Gemini)',
-    '  describe <video-id>             Dense frame descriptions',
     '',
     'Inspection:',
     '  list                            All ingested videos',
     '  status <video-id>               Artifact readiness + pipeline status',
-    '  inspect <video-id>              Full manifest',
-    '  timeline <video-id>             Watchpoints + scene changes',
+    '  inspect <video-id>              Full manifest (--timeline, --watchpoints)',
+    '  brief <video-id>                Markdown summary',
     '  config                          Current config',
     '',
     "Use 'video-cli <command> --help' for details on a specific command.",
@@ -305,12 +306,12 @@ async function runSetup(positionals, flags, config) {
   const estDuration = Number(probeResult.format.duration || 0);
   const estMinutes = estDuration / 60;
   const estTranscribe = estMinutes * 0.004;
-  const estOcr = 0.003;
+  const estAnalyze = 0.003;
   const estEmbed = 0.001;
-  const estTotal = estTranscribe + estOcr + estEmbed;
+  const estTotal = estTranscribe + estAnalyze + estEmbed;
   console.error(
     `setup: estimated cost ~$${estTotal.toFixed(4)} ` +
-    `(transcribe ~$${estTranscribe.toFixed(4)}, OCR ~$${estOcr.toFixed(4)}, embed ~$${estEmbed.toFixed(4)})`
+    `(transcribe ~$${estTranscribe.toFixed(4)}, analyze ~$${estAnalyze.toFixed(4)}, embed ~$${estEmbed.toFixed(4)})`
   );
 
   // Step 1: Ingest
@@ -325,9 +326,9 @@ async function runSetup(positionals, flags, config) {
   console.error('setup: transcribing...');
   await runTranscribe([id], { 'trim-silence': true }, config);
 
-  // Step 3: OCR
-  console.error('setup: running OCR...');
-  await runOcr([id], {}, config);
+  // Step 3: Analyze (OCR + describe in one pass)
+  console.error('setup: analyzing frames...');
+  await runAnalyze([id], {}, config);
 
   // Step 4: Embed
   console.error('setup: embedding...');
@@ -336,6 +337,7 @@ async function runSetup(positionals, flags, config) {
   const manifest = loadManifest(id);
   const transcript = readArtifactJson(id, 'transcript.json');
   const ocr = readArtifactJson(id, 'ocr.json');
+  const descriptions = readArtifactJson(id, 'descriptions.json');
   const embeddings = readArtifactJson(id, 'embeddings.json');
 
   printJson({
@@ -345,6 +347,7 @@ async function runSetup(positionals, flags, config) {
     watchpoints: manifest.watchpoints.length,
     utterances: transcript ? transcript.items.reduce((s, i) => s + (i.utterances || []).length, 0) : 0,
     ocrItems: ocr ? ocr.items.length : 0,
+    descriptions: descriptions ? descriptions.items.length : 0,
     embeddings: embeddings ? embeddings.items.length : 0,
     ready: true,
   });
@@ -470,9 +473,37 @@ async function runConfig(config) {
   printJson(config);
 }
 
-async function runInspect(positionals) {
+async function runInspect(positionals, flags) {
   const id = requirePositional(positionals, 0, '<video-id>');
-  printJson(loadManifest(id));
+  const manifest = loadManifest(id);
+
+  if (flags.timeline) {
+    printJson({
+      id: manifest.id,
+      durationSec: manifest.media.durationSec,
+      changePointsSec: manifest.sceneDetection.changePointsSec,
+      watchpoints: manifest.watchpoints,
+    });
+    return;
+  }
+
+  if (flags.watchpoints) {
+    const limit = parseNumberFlag(flags, 'limit', Number.POSITIVE_INFINITY);
+    const items = Number.isFinite(limit)
+      ? manifest.watchpoints.slice(0, Math.max(0, Math.floor(limit)))
+      : manifest.watchpoints.slice();
+
+    if (flags.materialize) {
+      const materialized = materializeWatchpoints(manifest, items);
+      printJson({ id, durationSec: manifest.media.durationSec, watchpoints: materialized });
+      return;
+    }
+
+    printJson({ id, durationSec: manifest.media.durationSec, watchpoints: items });
+    return;
+  }
+
+  printJson(manifest);
 }
 
 async function runTimeline(positionals) {
@@ -579,6 +610,56 @@ async function runOcr(positionals, flags, config) {
 
   writeArtifactJson(id, 'ocr.json', payload);
   printJson(payload);
+}
+
+async function runAnalyze(positionals, flags, config) {
+  const id = requirePositional(positionals, 0, '<video-id>');
+  const manifest = loadManifest(id);
+  const model = String(flags.model || config.ocr.model);
+  const apiKey = process.env.GEMINI_API_KEY || null;
+  const limit = parseNumberFlag(flags, 'limit', config.ocr.watchpointLimit);
+  const selected = manifest.watchpoints.slice(0, Math.max(1, Math.floor(limit)));
+  const frames = materializeWatchpoints(manifest, selected);
+
+  const results = await analyzeFrames({ apiKey, frames, model });
+
+  const now = new Date().toISOString();
+
+  const ocrItems = results.map(r => ({
+    atSec: r.atSec,
+    framePath: r.framePath,
+    text: r.text,
+  }));
+  const ocrPayload = {
+    id,
+    provider: 'gemini',
+    model,
+    createdAt: now,
+    items: ocrItems,
+  };
+  writeArtifactJson(id, 'ocr.json', ocrPayload);
+
+  const descItems = results.map(r => ({
+    atSec: r.atSec,
+    framePath: r.framePath,
+    description: r.description,
+  }));
+  const descPayload = {
+    id,
+    model,
+    createdAt: now,
+    frameCount: descItems.length,
+    items: descItems,
+  };
+  writeArtifactJson(id, 'descriptions.json', descPayload);
+
+  printJson({
+    id,
+    model,
+    frameCount: results.length,
+    ocrItems: ocrItems.filter(i => i.text).length,
+    descriptions: descItems.length,
+  });
 }
 
 async function runTranscribe(positionals, flags, config) {

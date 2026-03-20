@@ -5,6 +5,54 @@ const { spawnSync } = require('node:child_process');
 const { createArtifactPath } = require('./store');
 const { batchAsync, fetchWithTimeout, extractGeminiText, extractGeminiError } = require('./net');
 
+async function analyzeFrames({ apiKey, frames, model }) {
+  if (process.env.VIDEO_CLI_MOCK_GEMINI === '1') {
+    return frames.map(frame => ({
+      atSec: frame.atSec,
+      framePath: frame.framePath,
+      text: `mock ocr for frame at ${frame.atSec}s`,
+      description: `mock description for frame at ${frame.atSec}s`,
+    }));
+  }
+
+  const prompt = [
+    'Analyze this video frame. Return a JSON object with two fields:',
+    "1. 'text': Extract all visible text exactly as shown (labels, titles, subtitles, numbers). Return empty string if no text.",
+    "2. 'description': Describe what you see in 2-3 sentences (people, actions, UI elements, diagrams).",
+  ].join('\n');
+
+  const results = await batchAsync(frames, async (frame) => {
+    const raw = await callGeminiDescribe({
+      apiKey,
+      model,
+      prompt,
+      imagePath: frame.framePath,
+    });
+
+    let text = '';
+    let description = raw.trim();
+    try {
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        text = typeof parsed.text === 'string' ? parsed.text : '';
+        description = typeof parsed.description === 'string' ? parsed.description : description;
+      }
+    } catch (_) {
+      // If JSON parsing fails, treat entire response as description
+    }
+
+    return {
+      atSec: frame.atSec,
+      framePath: frame.framePath,
+      text,
+      description,
+    };
+  }, 5);
+
+  return results;
+}
+
 async function describeFrames({ apiKey, manifest, frames, model, prompt }) {
   if (process.env.VIDEO_CLI_MOCK_GEMINI === '1') {
     return frames.map(frame => ({
@@ -195,6 +243,7 @@ Return ONLY the JSON array, no other text.`;
 }
 
 module.exports = {
+  analyzeFrames,
   describeFrames,
   enrichRegion,
   extractDenseFrames,
