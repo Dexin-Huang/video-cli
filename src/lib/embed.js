@@ -1,7 +1,7 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { fetchWithTimeout, guessMimeType } = require('./net');
+const { batchAsync, fetchWithTimeout, guessMimeType } = require('./net');
 
 const DEFAULT_MODEL = 'gemini-embedding-2-preview';
 const DEFAULT_DIMENSIONS = 768;
@@ -108,6 +108,8 @@ async function buildEmbeddings({ apiKey, manifest, ocr, transcript, config }) {
   const sources = config.sources || { transcript: true, ocr: true, frames: true };
   const items = [];
 
+  // Collect transcript items to embed
+  const transcriptPending = [];
   if (sources.transcript && transcript && Array.isArray(transcript.items)) {
     let index = 0;
     for (const chunk of transcript.items) {
@@ -117,40 +119,60 @@ async function buildEmbeddings({ apiKey, manifest, ocr, transcript, config }) {
         if (!text) {
           continue;
         }
-        const vector = await embedText({ apiKey, text, model, taskType, dimensions });
-        items.push({
-          source: 'transcript',
-          index,
-          startSec: utterance.startSec,
-          endSec: utterance.endSec,
-          speaker: utterance.speaker ?? null,
-          text,
-          vector,
-        });
+        transcriptPending.push({ index, utterance, text });
         index += 1;
       }
     }
   }
 
-  if (sources.ocr && ocr && Array.isArray(ocr.items)) {
-    for (let i = 0; i < ocr.items.length; i += 1) {
-      const item = ocr.items[i];
-      const text = String(item.text || '').trim();
-      if (!text) {
-        continue;
-      }
-      const vector = await embedText({ apiKey, text, model, taskType, dimensions });
+  if (transcriptPending.length > 0) {
+    const vectors = await batchAsync(transcriptPending, (item) =>
+      embedText({ apiKey, text: item.text, model, taskType, dimensions }), 5);
+    for (let i = 0; i < transcriptPending.length; i += 1) {
+      const item = transcriptPending[i];
       items.push({
-        source: 'ocr',
-        index: i,
-        atSec: item.atSec,
-        framePath: item.framePath || null,
-        text,
-        vector,
+        source: 'transcript',
+        index: item.index,
+        startSec: item.utterance.startSec,
+        endSec: item.utterance.endSec,
+        speaker: item.utterance.speaker ?? null,
+        text: item.text,
+        vector: vectors[i],
       });
     }
   }
 
+  // Collect OCR items to embed
+  const ocrPending = [];
+  if (sources.ocr && ocr && Array.isArray(ocr.items)) {
+    for (let i = 0; i < ocr.items.length; i += 1) {
+      const ocrItem = ocr.items[i];
+      const text = String(ocrItem.text || '').trim();
+      if (!text) {
+        continue;
+      }
+      ocrPending.push({ index: i, ocrItem, text });
+    }
+  }
+
+  if (ocrPending.length > 0) {
+    const vectors = await batchAsync(ocrPending, (item) =>
+      embedText({ apiKey, text: item.text, model, taskType, dimensions }), 5);
+    for (let i = 0; i < ocrPending.length; i += 1) {
+      const item = ocrPending[i];
+      items.push({
+        source: 'ocr',
+        index: item.index,
+        atSec: item.ocrItem.atSec,
+        framePath: item.ocrItem.framePath || null,
+        text: item.text,
+        vector: vectors[i],
+      });
+    }
+  }
+
+  // Collect frame items to embed
+  const framePending = [];
   if (sources.frames && manifest && Array.isArray(manifest.watchpoints)) {
     for (let i = 0; i < manifest.watchpoints.length; i += 1) {
       const wp = manifest.watchpoints[i];
@@ -158,13 +180,21 @@ async function buildEmbeddings({ apiKey, manifest, ocr, transcript, config }) {
       if (!framePath || !fs.existsSync(framePath)) {
         continue;
       }
-      const vector = await embedImage({ apiKey, imagePath: framePath, model, taskType, dimensions });
+      framePending.push({ index: i, wp, framePath });
+    }
+  }
+
+  if (framePending.length > 0) {
+    const vectors = await batchAsync(framePending, (item) =>
+      embedImage({ apiKey, imagePath: item.framePath, model, taskType, dimensions }), 5);
+    for (let i = 0; i < framePending.length; i += 1) {
+      const item = framePending[i];
       items.push({
         source: 'frame',
-        index: i,
-        atSec: wp.atSec,
-        framePath,
-        vector,
+        index: item.index,
+        atSec: item.wp.atSec,
+        framePath: item.framePath,
+        vector: vectors[i],
       });
     }
   }

@@ -33,6 +33,7 @@ const { findMatches, semanticSearch, getContext, buildChapters, findNext } = req
 const { buildEmbeddings, embedText } = require('./lib/embed');
 const { askQuestion } = require('./lib/ask');
 const { describeFrames, extractDenseFrames, generateEvalQueries } = require('./lib/describe');
+const { batchAsync } = require('./lib/net');
 
 // Commands whose first positional is a video-id and can default to VIDEO_CLI_ID
 const VIDEO_ID_COMMANDS = new Set([
@@ -545,28 +546,28 @@ async function runOcr(positionals, flags, config) {
   const model = String(flags.model || config.ocr.model);
   const selected = manifest.watchpoints.slice(0, Math.max(1, Math.floor(limit)));
   const watchpoints = materializeWatchpoints(manifest, selected);
-  const results = [];
+  const ocrPrompt = [
+    'Extract the visible text from this video frame.',
+    'Return plain text only.',
+    'Keep line breaks when they help preserve structure.',
+    'If there is no meaningful visible text, return an empty string.',
+  ].join(' ');
 
-  for (const item of watchpoints) {
+  const results = await batchAsync(watchpoints, async (item) => {
     const ocr = await provider.ocrImage({
       imagePath: item.framePath,
       model,
-      prompt: [
-        'Extract the visible text from this video frame.',
-        'Return plain text only.',
-        'Keep line breaks when they help preserve structure.',
-        'If there is no meaningful visible text, return an empty string.',
-      ].join(' '),
+      prompt: ocrPrompt,
     });
 
-    results.push({
+    return {
       atSec: item.atSec,
       kind: item.kind,
       reason: item.reason,
       framePath: item.framePath,
       text: ocr.text.trim(),
-    });
-  }
+    };
+  }, 5);
 
   const payload = {
     id,
@@ -621,6 +622,15 @@ async function runTranscribe(positionals, flags, config) {
     const words = [];
     const utteranceItems = [];
 
+    // Phase 1: extract audio sequentially (disk I/O)
+    const transcribePrompt = [
+      'Transcribe the spoken audio in this clip.',
+      'Return plain text only.',
+      'Do not add commentary or analysis.',
+      'If there is no speech, return an empty string.',
+    ].join(' ');
+
+    const prepared = [];
     for (const [index, segment] of segments.entries()) {
       if (segment.durationSec <= 0.05) {
         continue;
@@ -633,9 +643,13 @@ async function runTranscribe(positionals, flags, config) {
       );
 
       extractAudioChunk(manifest.sourcePath, segment.startSec, segment.durationSec, audioPath);
+      prepared.push({ index, segment, audioPath });
+    }
 
-      const transcript = await provider.transcribeAudio({
-        audioPath,
+    // Phase 2: batch transcription API calls
+    const transcripts = await batchAsync(prepared, (item) =>
+      provider.transcribeAudio({
+        audioPath: item.audioPath,
         model,
         diarize,
         utterances,
@@ -643,13 +657,12 @@ async function runTranscribe(positionals, flags, config) {
         punctuate,
         detectLanguage,
         language,
-        prompt: [
-          'Transcribe the spoken audio in this clip.',
-          'Return plain text only.',
-          'Do not add commentary or analysis.',
-          'If there is no speech, return an empty string.',
-        ].join(' '),
-      });
+        prompt: transcribePrompt,
+      }), 5);
+
+    for (let i = 0; i < prepared.length; i += 1) {
+      const { index, segment, audioPath } = prepared[i];
+      const transcript = transcripts[i];
 
       const remappedWords = remapTimedItems(transcript.words || [], segment.startSec, 'word');
       const remappedUtterances = remapTimedItems(transcript.utterances || [], segment.startSec, 'utterance');

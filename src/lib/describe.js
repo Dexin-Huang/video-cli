@@ -3,21 +3,18 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const { createArtifactPath } = require('./store');
-const { fetchWithTimeout, extractGeminiText, extractGeminiError } = require('./net');
+const { batchAsync, fetchWithTimeout, extractGeminiText, extractGeminiError } = require('./net');
 
 async function describeFrames({ apiKey, manifest, frames, model, prompt }) {
-  const results = [];
+  if (process.env.VIDEO_CLI_MOCK_GEMINI === '1') {
+    return frames.map(frame => ({
+      atSec: frame.atSec,
+      framePath: frame.framePath,
+      description: `mock description for frame at ${frame.atSec}s`,
+    }));
+  }
 
-  for (const frame of frames) {
-    if (process.env.VIDEO_CLI_MOCK_GEMINI === '1') {
-      results.push({
-        atSec: frame.atSec,
-        framePath: frame.framePath,
-        description: `mock description for frame at ${frame.atSec}s`,
-      });
-      continue;
-    }
-
+  const results = await batchAsync(frames, async (frame) => {
     const description = await callGeminiDescribe({
       apiKey,
       model,
@@ -25,12 +22,12 @@ async function describeFrames({ apiKey, manifest, frames, model, prompt }) {
       imagePath: frame.framePath,
     });
 
-    results.push({
+    return {
       atSec: frame.atSec,
       framePath: frame.framePath,
       description: description.trim(),
-    });
-  }
+    };
+  }, 5);
 
   return results;
 }
