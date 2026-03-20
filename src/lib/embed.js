@@ -127,7 +127,7 @@ async function buildEmbeddings({ apiKey, manifest, ocr, transcript, config }) {
 
   if (transcriptPending.length > 0) {
     const vectors = await batchAsync(transcriptPending, (item) =>
-      embedText({ apiKey, text: item.text, model, taskType, dimensions }), 5, 'embedding');
+      embedText({ apiKey, text: item.text, model, taskType, dimensions }), 15, 'embedding');
     for (let i = 0; i < transcriptPending.length; i += 1) {
       const item = transcriptPending[i];
       items.push({
@@ -157,7 +157,7 @@ async function buildEmbeddings({ apiKey, manifest, ocr, transcript, config }) {
 
   if (ocrPending.length > 0) {
     const vectors = await batchAsync(ocrPending, (item) =>
-      embedText({ apiKey, text: item.text, model, taskType, dimensions }), 5, 'embedding');
+      embedText({ apiKey, text: item.text, model, taskType, dimensions }), 15, 'embedding');
     for (let i = 0; i < ocrPending.length; i += 1) {
       const item = ocrPending[i];
       items.push({
