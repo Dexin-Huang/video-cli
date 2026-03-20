@@ -1,6 +1,6 @@
 const path = require('node:path');
 
-const { loadManifest } = require('../lib/store');
+const { loadManifest, saveManifest } = require('../lib/store');
 const { buildVideoId, getFileIdentity, materializeWatchpoints, probeVideo } = require('../lib/media');
 const { readArtifactJson, writeArtifactJson } = require('../lib/artifacts');
 const { analyzeFrames } = require('../lib/describe');
@@ -24,22 +24,37 @@ async function runSetup(positionals, flags, config, helpers) {
     `(transcribe ~$${estTranscribe.toFixed(4)}, analyze ~$${estAnalyze.toFixed(4)}, embed ~$${estEmbed.toFixed(4)})`
   );
 
-  // Step 1: Ingest
-  console.error('setup: ingesting...');
-  await runIngest(positionals, flags, helpers);
-
-  // Find the ID from the ingested file
+  // Compute ID early and save a minimal manifest so transcribe can read sourcePath
   const identity = getFileIdentity(resolvedInput);
   const id = buildVideoId(identity);
-  const manifest = loadManifest(id);
-  console.error('setup: ingested ' + id + ' (' + manifest.watchpoints.length + ' watchpoints)');
+  const durationSec = Number(probeResult.format.duration || 0);
 
-  // Step 2+3: Transcribe and Analyze in parallel (independent: audio vs frames)
-  console.error('setup: transcribing + analyzing in parallel...');
+  saveManifest({
+    id,
+    importedAt: new Date().toISOString(),
+    sourcePath: resolvedInput,
+    sourceName: path.basename(resolvedInput),
+    file: identity,
+    media: { durationSec, audio: probeResult.streams?.find(s => s.codec_type === 'audio') ? {} : null },
+    sceneDetection: { changePointsSec: [] },
+    watchpoints: [],
+  });
+
+  // Step 1+2: Ingest (scene detection) and Transcribe (audio) in parallel
+  // Both need the source file but for different tracks. Ingest overwrites the manifest.
+  console.error('setup: ingesting + transcribing in parallel...');
   await Promise.all([
+    (async () => {
+      await runIngest(positionals, flags, helpers);
+      const manifest = loadManifest(id);
+      console.error('setup: ingested ' + id + ' (' + manifest.watchpoints.length + ' watchpoints)');
+    })(),
     runTranscribe([id], { 'trim-silence': true }, config, helpers),
-    runAnalyze([id], {}, config, helpers),
   ]);
+
+  // Step 3: Analyze (needs watchpoint frames from ingest)
+  console.error('setup: analyzing frames...');
+  await runAnalyze([id], {}, config, helpers);
 
   // Step 4: Embed (needs transcript + OCR from above)
   console.error('setup: embedding...');
