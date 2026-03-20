@@ -12,8 +12,8 @@ const BUILTIN_PRESETS = {
       watchpointLimit: 8,
     },
     transcribe: {
-      provider: 'deepgram',
-      model: 'nova-3',
+      provider: 'elevenlabs',
+      model: 'scribe_v2',
       chunkSeconds: 480,
       trimSilence: false,
       minSilenceSec: 1.5,

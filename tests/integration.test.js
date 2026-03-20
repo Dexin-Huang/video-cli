@@ -24,7 +24,7 @@ test('ingest, list, inspect, frame, and clip work end to end', () => {
   const config = runCli(['config']);
   assert.equal(config.preset, 'balanced');
   assert.equal(config.ocr.provider, 'gemini');
-  assert.equal(config.transcribe.provider, 'deepgram');
+  assert.equal(config.transcribe.provider, 'elevenlabs');
 
   const sampleVideo = path.join(tmpRoot, 'sample.mp4');
   createSampleVideo(sampleVideo);
@@ -84,7 +84,7 @@ test('ingest, list, inspect, frame, and clip work end to end', () => {
   assert.equal(transcript.items[0].skippedSilenceSec > 0.9, true);
   assert.equal(transcript.items[0].words.length >= 4, true);
   assert.equal(transcript.items[0].utterances.length, 2);
-  assert.match(transcript.items[0].text, /mock deepgram transcript/);
+  assert.match(transcript.items[0].text, /mock (deepgram|elevenlabs) transcript/);
   assert.equal(transcript.items[0].words[1].startSec > transcript.items[0].words[0].startSec, true);
 
   const grep = runCli(['grep', ingest.id, 'mock']);
@@ -124,6 +124,7 @@ function runCli(args) {
       VIDEO_CLI_DATA_ROOT: dataRoot,
       VIDEO_CLI_MOCK_GEMINI: '1',
       VIDEO_CLI_MOCK_DEEPGRAM: '1',
+      VIDEO_CLI_MOCK_ELEVENLABS: '1',
     },
   });
 
