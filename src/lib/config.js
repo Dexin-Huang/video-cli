@@ -37,7 +37,7 @@ const BUILTIN_PRESETS = {
       sources: {
         transcript: true,
         ocr: true,
-        frames: true,
+        frames: false,  // frame descriptions are already embedded as text via analyze
       },
     },
   },
