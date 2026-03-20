@@ -34,15 +34,14 @@ async function runSetup(positionals, flags, config, helpers) {
   const manifest = loadManifest(id);
   console.error('setup: ingested ' + id + ' (' + manifest.watchpoints.length + ' watchpoints)');
 
-  // Step 2: Transcribe
-  console.error('setup: transcribing...');
-  await runTranscribe([id], { 'trim-silence': true }, config, helpers);
+  // Step 2+3: Transcribe and Analyze in parallel (independent: audio vs frames)
+  console.error('setup: transcribing + analyzing in parallel...');
+  await Promise.all([
+    runTranscribe([id], { 'trim-silence': true }, config, helpers),
+    runAnalyze([id], {}, config, helpers),
+  ]);
 
-  // Step 3: Analyze (OCR + describe in one pass)
-  console.error('setup: analyzing frames...');
-  await runAnalyze([id], {}, config, helpers);
-
-  // Step 4: Embed
+  // Step 4: Embed (needs transcript + OCR from above)
   console.error('setup: embedding...');
   await runEmbed([id], {}, config, helpers);
 
