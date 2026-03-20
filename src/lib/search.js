@@ -23,6 +23,20 @@ function findMatches({ query, ocr, transcript }) {
   if (transcript && Array.isArray(transcript.items)) {
     for (const item of transcript.items) {
       appendTranscriptMatches(matches, item, needle);
+
+      // Search audio events (laughter, applause, music, etc.)
+      if (Array.isArray(item.audioEvents)) {
+        for (const event of item.audioEvents) {
+          if (event.event && event.event.toLowerCase().includes(needle)) {
+            matches.push({
+              source: 'audio_event',
+              startSec: event.startSec,
+              endSec: event.endSec,
+              text: event.event,
+            });
+          }
+        }
+      }
     }
   }
 
@@ -193,6 +207,17 @@ function getContext({ atSec, windowSec, transcript, ocr, descriptions, manifest 
     }
   }
 
+  const audioEvents = [];
+  if (transcript && Array.isArray(transcript.items)) {
+    for (const chunk of transcript.items) {
+      for (const event of (chunk.audioEvents || [])) {
+        if (event.startSec >= startSec && event.startSec <= endSec) {
+          audioEvents.push(event);
+        }
+      }
+    }
+  }
+
   const context = {
     atSec,
     windowSec,
@@ -202,6 +227,7 @@ function getContext({ atSec, windowSec, transcript, ocr, descriptions, manifest 
     ocrItems,
     frames,
     sceneChanges,
+    audioEvents,
   };
 
   context.suggestedCommands = [

@@ -119,7 +119,14 @@ function normalizePayload(payload) {
 
   const text = utterances.map(u => u.transcript).join(' ').trim();
 
-  return { text, words, utterances, audioEvents };
+  return {
+    text,
+    words,
+    utterances,
+    audioEvents,
+    languageCode: payload.language_code || null,
+    languageProbability: payload.language_probability ?? null,
+  };
 }
 
 function parseSpeaker(speakerId) {

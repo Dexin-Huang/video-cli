@@ -660,6 +660,8 @@ async function runTranscribe(positionals, flags, config) {
         prompt: transcribePrompt,
       }), 5);
 
+    const audioEventItems = [];
+
     for (let i = 0; i < prepared.length; i += 1) {
       const { index, segment, audioPath } = prepared[i];
       const transcript = transcripts[i];
@@ -668,6 +670,17 @@ async function runTranscribe(positionals, flags, config) {
       const remappedUtterances = remapTimedItems(transcript.utterances || [], segment.startSec, 'utterance');
       words.push(...remappedWords);
       utteranceItems.push(...remappedUtterances);
+
+      // Collect audio events (laughter, applause, music, etc.) with remapped timestamps
+      if (Array.isArray(transcript.audioEvents)) {
+        for (const event of transcript.audioEvents) {
+          audioEventItems.push({
+            event: event.event,
+            startSec: Number((segment.startSec + event.startSec).toFixed(3)),
+            endSec: Number((segment.startSec + event.endSec).toFixed(3)),
+          });
+        }
+      }
 
       segmentResults.push({
         index,
@@ -678,6 +691,7 @@ async function runTranscribe(positionals, flags, config) {
         text: String(transcript.text || '').trim(),
         wordCount: remappedWords.length,
         utteranceCount: remappedUtterances.length,
+        languageCode: transcript.languageCode || null,
       });
     }
 
@@ -702,6 +716,7 @@ async function runTranscribe(positionals, flags, config) {
       text: segmentResults.map(item => item.text).filter(Boolean).join('\n').trim(),
       words,
       utterances: utteranceItems,
+      audioEvents: audioEventItems,
     });
   }
 
