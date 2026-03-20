@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { fetchWithTimeout } = require('./net');
 
 function createDeepgramProvider() {
   if (process.env.VIDEO_CLI_MOCK_DEEPGRAM === '1') {
@@ -40,28 +41,21 @@ function createDeepgramProvider() {
         url.searchParams.set('language', String(language));
       }
 
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30000);
-      try {
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: {
-            Authorization: `Token ${apiKey}`,
-            'Content-Type': guessAudioMimeType(audioPath),
-          },
-          signal: controller.signal,
-          body: fs.readFileSync(audioPath),
-        });
+      const response = await fetchWithTimeout(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Token ${apiKey}`,
+          'Content-Type': guessAudioMimeType(audioPath),
+        },
+        body: fs.readFileSync(audioPath),
+      });
 
-        const payload = await response.json();
-        if (!response.ok) {
-          throw new Error(`Deepgram request failed: ${extractErrorMessage(payload)}`);
-        }
-
-        return normalizeTranscriptPayload(payload);
-      } finally {
-        clearTimeout(timeout);
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(`Deepgram request failed: ${extractErrorMessage(payload)}`);
       }
+
+      return normalizeTranscriptPayload(payload);
     },
   };
 }

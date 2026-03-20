@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
+const { fetchWithTimeout, guessMimeType } = require('./net');
 
 const DEFAULT_MODEL = 'gemini-embedding-2-preview';
 const DEFAULT_DIMENSIONS = 768;
@@ -39,35 +40,23 @@ async function embedImage({ apiKey, imagePath, model, taskType, dimensions }) {
 async function callEmbedApi({ apiKey, model, dimensions, taskType, content }) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:embedContent?key=${encodeURIComponent(apiKey)}`;
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: controller.signal,
-      body: JSON.stringify({
-        content,
-        taskType,
-        outputDimensionality: dimensions,
-      }),
-    });
+  const response = await fetchWithTimeout(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content, taskType, outputDimensionality: dimensions }),
+  });
 
-    const payload = await response.json();
-    if (!response.ok) {
-      const message = payload?.error?.message || JSON.stringify(payload);
-      throw new Error(`Gemini embedding request failed: ${message}`);
-    }
-
-    const values = payload?.embedding?.values;
-    if (!Array.isArray(values)) {
-      throw new Error('Gemini embedding response missing embedding.values');
-    }
-
-    return values;
-  } finally {
-    clearTimeout(timeout);
+  const payload = await response.json();
+  if (!response.ok) {
+    const { extractGeminiError } = require('./net');
+    throw new Error(`Gemini embedding request failed: ${extractGeminiError(payload)}`);
   }
+
+  const values = payload?.embedding?.values;
+  if (!Array.isArray(values)) {
+    throw new Error('Gemini embedding response missing embedding.values');
+  }
+  return values;
 }
 
 function cosineSimilarity(vecA, vecB) {
@@ -181,21 +170,6 @@ async function buildEmbeddings({ apiKey, manifest, ocr, transcript, config }) {
   }
 
   return items;
-}
-
-function guessMimeType(filePath) {
-  const ext = path.extname(filePath).toLowerCase();
-  switch (ext) {
-    case '.jpg':
-    case '.jpeg':
-      return 'image/jpeg';
-    case '.png':
-      return 'image/png';
-    case '.webp':
-      return 'image/webp';
-    default:
-      return 'application/octet-stream';
-  }
 }
 
 function mockVector(seed, dimensions) {

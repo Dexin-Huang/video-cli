@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { fetchWithTimeout, extractGeminiText, extractGeminiError } = require('./net');
 
 async function askQuestion({ apiKey, model, query, searchResults, context, videoId }) {
   if (process.env.VIDEO_CLI_MOCK_GEMINI === '1') {
@@ -46,34 +47,21 @@ Rules:
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
-  let text;
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: controller.signal,
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 500 },
-      }),
-    });
+  const response = await fetchWithTimeout(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.1, maxOutputTokens: 500 },
+    }),
+  });
 
-    const payload = await response.json();
-    if (!response.ok) {
-      const message = payload?.error?.message || JSON.stringify(payload);
-      throw new Error(`Gemini ask failed: ${message}`);
-    }
-
-    const candidates = payload.candidates || [];
-    text = (candidates[0]?.content?.parts || [])
-      .map(p => typeof p.text === 'string' ? p.text : '')
-      .join('')
-      .trim();
-  } finally {
-    clearTimeout(timeout);
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(`Gemini ask failed: ${extractGeminiError(payload)}`);
   }
+
+  const text = extractGeminiText(payload);
 
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   let result;
