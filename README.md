@@ -7,7 +7,7 @@ Ingest a video, then ask questions with grounded citations -- or search, navigat
 ## Quick Start
 
 ```bash
-# one-time setup: ingest + transcribe + OCR + embed
+# one-time setup: ingest + transcribe + analyze + embed
 video-cli setup recording.mp4
 
 # ask a question
@@ -22,7 +22,7 @@ Most agent sessions are 1-3 commands. `setup` then `ask` handles the 80% case.
 
 | Command | Purpose |
 |---------|---------|
-| `setup <file>` | Ingest + transcribe + OCR + embed in one step |
+| `setup <file>` | Ingest + transcribe + analyze + embed in one step |
 | `ask <id> <question>` | Answer with grounded citations |
 
 ### Tier 2: Navigation and Extraction
@@ -42,7 +42,7 @@ Most agent sessions are 1-3 commands. `setup` then `ask` handles the 80% case.
 | Command | Purpose |
 |---------|---------|
 | `ingest <file>` | Probe video, detect scenes, pick watchpoints |
-| `transcribe <id>` | Transcribe audio (Deepgram nova-3) |
+| `transcribe <id>` | Transcribe audio (ElevenLabs Scribe v2) |
 | `ocr <id>` | OCR representative frames (Gemini flash-lite) |
 | `embed <id>` | Build embeddings from transcript + OCR + frames |
 | `describe <id>` | Dense frame descriptions (optional) |
@@ -58,7 +58,7 @@ Most agent sessions are 1-3 commands. `setup` then `ask` handles the 80% case.
 
 - Node >= 22
 - `ffmpeg` and `ffprobe`
-- API keys: `GEMINI_API_KEY`, `DEEPGRAM_API_KEY` in `.env`
+- API keys: `GEMINI_API_KEY`, `ELEVENLABS_API_KEY` in `.env` (Deepgram available via `--provider deepgram`)
 
 ## Installation
 
@@ -81,11 +81,12 @@ npm run eval:json     # JSON output for agent loops
 npm run goldens:check # golden-set scaffold
 ```
 
-The eval harness uses synthetic local fixtures. It does not call Gemini or Deepgram.
+The eval harness uses synthetic local fixtures. It does not call Gemini or ElevenLabs.
 
 ## Repo Layout
 
-- `src/cli.js` -- command routing
+- `src/cli.js` -- thin dispatcher + arg parsing
+- `src/commands/` -- command handlers (setup, ask, search, media, pipeline, inspect, eval)
 - `src/lib/` -- storage, media, providers, search, embeddings, ask
 - `tests/` -- black-box CLI tests
 - `evals/` -- deterministic regression evals for retrieval

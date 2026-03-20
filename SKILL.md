@@ -11,7 +11,7 @@ video-cli makes videos searchable and inspectable for AI agents. It ingests a vi
 ## Quick Start
 
 ```bash
-# one-time setup: ingest + transcribe + OCR + embed
+# one-time setup: ingest + transcribe + analyze + embed
 video-cli setup recording.mp4
 # ask a question with grounded citations
 video-cli ask <id> "what is the main argument?"
@@ -23,7 +23,7 @@ video-cli ask <id> "what is the main argument?"
 
 ```bash
 video-cli setup <file>
-# Runs ingest + transcribe + ocr + embed in one step.
+# Runs ingest + transcribe + analyze + embed in one step.
 # Returns: { id, sourceName, durationSec, watchpoints, utterances, ocrItems, embeddings, ready }
 
 video-cli ask <video-id> <question>
@@ -71,7 +71,7 @@ video-cli ingest <file> [--watchpoints N] [--scene-threshold N]
 # Probe video, detect scene changes, pick watchpoints. Local only, no API calls.
 
 video-cli transcribe <video-id> [--chunk-seconds N] [--limit N] [--provider <name>] [--model <name>] [--trim-silence]
-# Transcribe audio with word-level timestamps. Default: Deepgram nova-3.
+# Transcribe audio with word-level timestamps. Default: ElevenLabs Scribe v2. Use --provider deepgram for backward compat.
 
 video-cli ocr <video-id> [--limit N] [--provider <name>] [--model <name>]
 # OCR representative frames. Default: Gemini flash-lite.
@@ -242,8 +242,8 @@ video-cli clip bcast-def456 --at 238 --pre 5 --post 10
 ## Notes
 
 - All commands return JSON to stdout. Progress messages go to stderr.
-- `setup` is the recommended entry point. It runs `ingest`, `transcribe`, `ocr`, and `embed` in sequence.
+- `setup` is the recommended entry point. It runs `ingest`, `transcribe`, `analyze`, and `embed` in sequence.
 - `ask` performs JIT enrichment: if frame descriptions are missing for the relevant region, it generates them on demand and caches them.
 - `context` output includes `suggestedCommands` -- the agent always knows what to try next.
 - Video IDs are deterministic hashes of file identity (path + size + mtime). Re-ingesting the same file returns the same ID.
-- Requires `ffmpeg`, `ffprobe`, Node >= 22, and API keys for Gemini and Deepgram in the environment.
+- Requires `ffmpeg`, `ffprobe`, Node >= 22, and API keys for Gemini and ElevenLabs in the environment. Deepgram is available via `--provider deepgram` for backward compat.

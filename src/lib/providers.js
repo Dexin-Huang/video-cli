@@ -1,17 +1,13 @@
-const { createGeminiProvider } = require('./gemini');
-const { createDeepgramProvider } = require('./deepgram');
-const { createElevenLabsProvider } = require('./elevenlabs');
-
 function createProvider(name) {
   switch (name) {
     case 'gemini':
-      return createGeminiProvider();
-    case 'deepgram':
-      return createDeepgramProvider();
+      return require('./gemini').createGeminiProvider();
     case 'elevenlabs':
-      return createElevenLabsProvider();
+      return require('./elevenlabs').createElevenLabsProvider();
+    case 'deepgram':
+      return require('./deepgram').createDeepgramProvider();
     default:
-      throw new Error(`Provider "${name}" is not implemented yet. Supported providers: gemini, deepgram, elevenlabs.`);
+      throw new Error(`Provider "${name}" is not implemented yet. Supported providers: gemini, elevenlabs, deepgram.`);
   }
 }
 

@@ -4,6 +4,7 @@ const path = require('node:path');
 const DEFAULT_PRESET = 'balanced';
 
 const BUILTIN_PRESETS = {
+  // Golden path: ElevenLabs for transcription, Gemini for vision + embeddings
   balanced: {
     preset: 'balanced',
     ocr: {
