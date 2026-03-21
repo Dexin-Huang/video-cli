@@ -76,7 +76,6 @@ function detectSceneChangesAtThreshold(filePath, threshold) {
 }
 
 function detectSceneChangesWithScores(filePath, threshold) {
-  // Single-pass scene detection. One ffmpeg call. No fallbacks.
   const t = threshold || 0.35;
   const nullSink = os.platform() === 'win32' ? 'NUL' : '/dev/null';
   const filter = `select='gt(scene,${t})',showinfo`;

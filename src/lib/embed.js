@@ -1,6 +1,5 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
-const path = require('node:path');
 const { batchAsync, fetchWithRetry, guessMimeType } = require('./net');
 
 const DEFAULT_MODEL = 'gemini-embedding-2-preview';
@@ -229,7 +228,6 @@ function mockVector(seed, dimensions) {
 module.exports = {
   buildEmbeddings,
   cosineSimilarity,
-  embedImage,
   embedText,
   rankBySimilarity,
 };

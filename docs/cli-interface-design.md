@@ -15,18 +15,14 @@ Most agent sessions should be 1-3 commands. The primitives exist for when the in
 ### Tier 1: Intent Commands (the 80% case)
 
 ```
-video-cli ingest <file> [--adaptive]
-  → Ingest a video. Adaptive watchpoints at visual transition outliers.
-  → Returns: id, duration, watchpoint count, chapter summary
+video-cli setup <file>
+  → Ingest + transcribe + analyze + embed in one step.
+  → Returns: { id, sourceName, durationSec, watchpoints, utterances, ocrItems, embeddings, ready }
 
 video-cli ask <id> <question>
   → Answer a question about the video with grounded citations.
-  → Internally: search → gather context → synthesize via Flash-Lite
+  → Internally: search → gather context → synthesize via Gemini
   → Returns: { answer, citations[], suggestedFollowUps[] }
-
-video-cli summarize <id> [--depth brief|full]
-  → Produce a structured summary of the entire video.
-  → Returns: { chapters[], keyTopics[], duration }
 ```
 
 ### Tier 2: Navigation Primitives (drill deeper)
@@ -75,7 +71,7 @@ video-cli bundle <id>
 
 ```
 video-cli ingest <file>         → manifest (free, local)
-video-cli transcribe <id>       → transcript.json (Deepgram, ~$0.004/min)
+video-cli transcribe <id>       → transcript.json (Gemini, ~$0.0003/min)
 video-cli ocr <id>              → ocr.json (Gemini Flash-Lite, ~$0.003)
 video-cli embed <id>            → embeddings.json (Gemini Embedding-2, ~$0.001)
 video-cli describe <id>         → descriptions.json (optional dense, ~$0.01-0.03)
@@ -147,14 +143,14 @@ Every command returns JSON. The agent parses it and decides the next move.
 
 ### Pattern 1: Quick answer (1-2 calls)
 ```
-ingest lecture.mp4
+setup lecture.mp4
 ask <id> "what is the main argument?"
 → done
 ```
 
 ### Pattern 2: Exploration (3-5 calls)
 ```
-ingest lecture.mp4
+setup lecture.mp4
 ask <id> "what topics are covered?"
 → sees mention of "cost function" in citations
 ask <id> "explain the cost function section in detail"
@@ -165,7 +161,7 @@ frame <id> --at 198
 
 ### Pattern 3: Deep dive (5+ calls)
 ```
-ingest broadcast.mp4
+setup broadcast.mp4
 chapters <id>
 → picks chapter 5 (interesting topic)
 context <id> --at 154 --window 20
@@ -178,7 +174,7 @@ clip <id> --at 238 --pre 5 --post 10
 
 ### Pattern 4: Tutorial following
 ```
-ingest tutorial.mp4
+setup tutorial.mp4
 chapters <id>
 → gets step-by-step structure
 context <id> --at <step1-time> --window 10

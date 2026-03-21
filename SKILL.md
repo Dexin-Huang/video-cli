@@ -71,7 +71,7 @@ video-cli ingest <file> [--watchpoints N] [--scene-threshold N]
 # Probe video, detect scene changes, pick watchpoints. Local only, no API calls.
 
 video-cli transcribe <video-id> [--chunk-seconds N] [--limit N] [--provider <name>] [--model <name>] [--trim-silence]
-# Transcribe audio with word-level timestamps. Default: ElevenLabs Scribe v2. Use --provider deepgram for backward compat.
+# Transcribe audio. Default: Gemini (gemini-transcribe). Use --provider elevenlabs for word-level timestamps + audio events, or --provider deepgram.
 
 video-cli ocr <video-id> [--limit N] [--provider <name>] [--model <name>]
 # OCR representative frames. Default: Gemini flash-lite.
@@ -246,4 +246,4 @@ video-cli clip bcast-def456 --at 238 --pre 5 --post 10
 - `ask` performs JIT enrichment: if frame descriptions are missing for the relevant region, it generates them on demand and caches them.
 - `context` output includes `suggestedCommands` -- the agent always knows what to try next.
 - Video IDs are deterministic hashes of file identity (path + size + mtime). Re-ingesting the same file returns the same ID.
-- Requires `ffmpeg`, `ffprobe`, Node >= 22, and API keys for Gemini and ElevenLabs in the environment. Deepgram is available via `--provider deepgram` for backward compat.
+- Requires `ffmpeg`, `ffprobe`, Node >= 22, and `GEMINI_API_KEY` in the environment. One API key powers everything. ElevenLabs and Deepgram are available as optional overrides via `--provider elevenlabs` / `--provider deepgram`.

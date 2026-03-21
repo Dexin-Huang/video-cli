@@ -1,5 +1,3 @@
-const fs = require('node:fs');
-const path = require('node:path');
 const { fetchWithRetry, extractGeminiText, extractGeminiError } = require('./net');
 
 async function askQuestion({ apiKey, model, query, searchResults, context, videoId }) {

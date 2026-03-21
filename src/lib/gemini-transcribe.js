@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { fetchWithRetry, extractGeminiText, extractGeminiError, batchAsync } = require('./net');
+const { fetchWithRetry, extractGeminiText, extractGeminiError } = require('./net');
 
 const DEFAULT_MODEL = 'gemini-3.1-flash-lite-preview';
 const MAX_CHUNK_SEC = 90;

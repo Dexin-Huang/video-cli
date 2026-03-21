@@ -1,6 +1,6 @@
 # video-cli
 
-Local-first CLI that makes videos searchable and inspectable for AI agents.
+Local-first CLI that makes videos searchable and inspectable for AI agents. One API key (Gemini), ~$0.018/hour of video to set up, ~$0.0001/query.
 
 Ingest a video, then ask questions with grounded citations -- or search, navigate chapters, extract frames and clips. All commands return JSON.
 
@@ -42,7 +42,7 @@ Most agent sessions are 1-3 commands. `setup` then `ask` handles the 80% case.
 | Command | Purpose |
 |---------|---------|
 | `ingest <file>` | Probe video, detect scenes, pick watchpoints |
-| `transcribe <id>` | Transcribe audio (ElevenLabs Scribe v2) |
+| `transcribe <id>` | Transcribe audio (Gemini, default) |
 | `ocr <id>` | OCR representative frames (Gemini flash-lite) |
 | `embed <id>` | Build embeddings from transcript + OCR + frames |
 | `describe <id>` | Dense frame descriptions (optional) |
@@ -58,7 +58,8 @@ Most agent sessions are 1-3 commands. `setup` then `ask` handles the 80% case.
 
 - Node >= 22
 - `ffmpeg` and `ffprobe`
-- API keys: `GEMINI_API_KEY`, `ELEVENLABS_API_KEY` in `.env` (Deepgram available via `--provider deepgram`)
+- API key: `GEMINI_API_KEY` in `.env` (powers transcription, OCR, embeddings, and ask)
+- Optional overrides: `ELEVENLABS_API_KEY` or `DEEPGRAM_API_KEY` for `--provider elevenlabs` / `--provider deepgram`
 
 ## Installation
 
@@ -81,7 +82,7 @@ npm run eval:json     # JSON output for agent loops
 npm run goldens:check # golden-set scaffold
 ```
 
-The eval harness uses synthetic local fixtures. It does not call Gemini or ElevenLabs.
+The eval harness uses synthetic local fixtures. It does not call any external APIs.
 
 ## Repo Layout
 

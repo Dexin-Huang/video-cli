@@ -1,6 +1,3 @@
-const fs = require('node:fs');
-const path = require('node:path');
-
 const STOP_WORDS = new Set('the and that this with from have are was were for not they what been will when your like just also about into more some very then there here these those would could other than show where which does scene moment visual first after before during being make made'.split(' '));
 
 // ============================================================
@@ -394,5 +391,4 @@ module.exports = {
   getContext,
   buildChapters,
   findNext,
-  cosineSimilarity,
 };

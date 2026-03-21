@@ -62,7 +62,6 @@ function createArtifactPath(id, category, fileName) {
 module.exports = {
   createArtifactPath,
   ensureDataRoot,
-  getDataRoot,
   getRepoRoot,
   listManifests,
   loadManifest,
