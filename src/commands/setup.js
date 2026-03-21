@@ -13,21 +13,16 @@ async function runSetup(positionals, flags, config, helpers) {
   // Cost estimate based on probe duration (reuses probe from ingest)
   const resolvedInput = path.resolve(inputFile);
   const probeResult = probeVideo(resolvedInput);
-  const estDuration = Number(probeResult.format.duration || 0);
-  const estMinutes = estDuration / 60;
-  const estTranscribe = estMinutes * 0.004;
-  const estAnalyze = 0.003;
-  const estEmbed = 0.001;
-  const estTotal = estTranscribe + estAnalyze + estEmbed;
+  const durationSec = Number(probeResult.format.duration || 0);
+  const estTranscribe = (durationSec / 60) * 0.004;
+  const estTotal = estTranscribe + 0.004;
   console.error(
     `setup: estimated cost ~$${estTotal.toFixed(4)} ` +
-    `(transcribe ~$${estTranscribe.toFixed(4)}, analyze ~$${estAnalyze.toFixed(4)}, embed ~$${estEmbed.toFixed(4)})`
+    `(transcribe ~$${estTranscribe.toFixed(4)}, analyze ~$0.0030, embed ~$0.0010)`
   );
 
-  // Compute ID early and save a minimal manifest so transcribe can read sourcePath
   const identity = getFileIdentity(resolvedInput);
   const id = buildVideoId(identity);
-  const durationSec = Number(probeResult.format.duration || 0);
 
   saveManifest({
     id,
@@ -89,41 +84,16 @@ async function runAnalyze(positionals, flags, config, { requirePositional, parse
   const frames = materializeWatchpoints(manifest, selected);
 
   const results = await analyzeFrames({ apiKey, frames, model });
-
   const now = new Date().toISOString();
 
-  const ocrItems = results.map(r => ({
-    atSec: r.atSec,
-    framePath: r.framePath,
-    text: r.text,
-  }));
-  const ocrPayload = {
-    id,
-    provider: 'gemini',
-    model,
-    createdAt: now,
-    items: ocrItems,
-  };
-  writeArtifactJson(id, 'ocr.json', ocrPayload);
+  const ocrItems = results.map(r => ({ atSec: r.atSec, framePath: r.framePath, text: r.text }));
+  writeArtifactJson(id, 'ocr.json', { id, provider: 'gemini', model, createdAt: now, items: ocrItems });
 
-  const descItems = results.map(r => ({
-    atSec: r.atSec,
-    framePath: r.framePath,
-    description: r.description,
-  }));
-  const descPayload = {
-    id,
-    model,
-    createdAt: now,
-    frameCount: descItems.length,
-    items: descItems,
-  };
-  writeArtifactJson(id, 'descriptions.json', descPayload);
+  const descItems = results.map(r => ({ atSec: r.atSec, framePath: r.framePath, description: r.description }));
+  writeArtifactJson(id, 'descriptions.json', { id, model, createdAt: now, frameCount: descItems.length, items: descItems });
 
   printJson({
-    id,
-    model,
-    frameCount: results.length,
+    id, model, frameCount: results.length,
     ocrItems: ocrItems.filter(i => i.text).length,
     descriptions: descItems.length,
   });

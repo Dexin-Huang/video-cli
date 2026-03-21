@@ -3,47 +3,29 @@ const { findMatches, semanticSearch } = require('../lib/search');
 const { embedText } = require('../lib/embed');
 const { generateEvalQueries } = require('../lib/describe');
 
+function calcIoU(m, gt) {
+  const mStart = m.startSec ?? m.atSec ?? 0;
+  const mEnd = m.endSec ?? (mStart + 5);
+  const inter = Math.max(0, Math.min(mEnd, gt.endSec) - Math.max(mStart, gt.startSec));
+  const union = (mEnd - mStart) + (gt.endSec - gt.startSec) - inter;
+  return union > 0 ? inter / union : 0;
+}
+
 function computeBestIoU(matches, groundTruthSpans) {
   let best = { iou: 0, matchIdx: -1, spanIdx: -1 };
-
-  for (let mi = 0; mi < matches.length; mi += 1) {
-    const m = matches[mi];
-    const mStart = m.startSec ?? m.atSec ?? 0;
-    const mEnd = m.endSec ?? (mStart + 5);
-
-    for (let si = 0; si < groundTruthSpans.length; si += 1) {
-      const gt = groundTruthSpans[si];
-      const interStart = Math.max(mStart, gt.startSec);
-      const interEnd = Math.min(mEnd, gt.endSec);
-      const intersection = Math.max(0, interEnd - interStart);
-      const union = (mEnd - mStart) + (gt.endSec - gt.startSec) - intersection;
-      const iou = union > 0 ? Number((intersection / union).toFixed(4)) : 0;
-
-      if (iou > best.iou) {
-        best = { iou, matchIdx: mi, spanIdx: si };
-      }
+  for (let mi = 0; mi < matches.length; mi++) {
+    for (let si = 0; si < groundTruthSpans.length; si++) {
+      const iou = Number(calcIoU(matches[mi], groundTruthSpans[si]).toFixed(4));
+      if (iou > best.iou) best = { iou, matchIdx: mi, spanIdx: si };
     }
   }
-
   return best;
 }
 
 function computeReciprocalRank(matches, groundTruthSpans, iouThreshold) {
-  for (let i = 0; i < matches.length; i += 1) {
-    const m = matches[i];
-    const mStart = m.startSec ?? m.atSec ?? 0;
-    const mEnd = m.endSec ?? (mStart + 5);
-
+  for (let i = 0; i < matches.length; i++) {
     for (const gt of groundTruthSpans) {
-      const interStart = Math.max(mStart, gt.startSec);
-      const interEnd = Math.min(mEnd, gt.endSec);
-      const intersection = Math.max(0, interEnd - interStart);
-      const union = (mEnd - mStart) + (gt.endSec - gt.startSec) - intersection;
-      const iou = union > 0 ? intersection / union : 0;
-
-      if (iou >= iouThreshold) {
-        return Number((1 / (i + 1)).toFixed(4));
-      }
+      if (calcIoU(matches[i], gt) >= iouThreshold) return Number((1 / (i + 1)).toFixed(4));
     }
   }
   return 0;
@@ -61,32 +43,11 @@ async function runEvalGenerate(positionals, flags, config, { requirePositional, 
     throw new Error('No descriptions.json found. Run `video-cli describe` first.');
   }
 
-  const queries = await generateEvalQueries({
-    apiKey,
-    model,
-    descriptions: descriptions.items,
-    transcript,
-  });
-
-  const payload = {
-    id,
-    model,
-    createdAt: new Date().toISOString(),
-    queryCount: queries.length,
-    queries,
-  };
-
-  writeArtifactJson(id, 'eval-queries.json', payload);
+  const queries = await generateEvalQueries({ apiKey, model, descriptions: descriptions.items, transcript });
+  writeArtifactJson(id, 'eval-queries.json', { id, model, createdAt: new Date().toISOString(), queryCount: queries.length, queries });
   printJson({
-    id,
-    model,
-    queryCount: queries.length,
-    queries: queries.map(q => ({
-      query: q.query,
-      modality: q.modality,
-      difficulty: q.difficulty,
-      spanCount: q.groundTruthSpans.length,
-    })),
+    id, model, queryCount: queries.length,
+    queries: queries.map(q => ({ query: q.query, modality: q.modality, difficulty: q.difficulty, spanCount: q.groundTruthSpans.length })),
   });
 }
 
@@ -129,56 +90,29 @@ async function runEvalRun(positionals, flags, config, { requirePositional, parse
     });
 
     const bestIoU = computeBestIoU(matches, evalQuery.groundTruthSpans);
-    const r1Hit = bestIoU.iou >= 0.5;
-    const r1Loose = bestIoU.iou >= 0.3;
-
-    const reciprocalRank = computeReciprocalRank(matches, evalQuery.groundTruthSpans, 0.3);
-
     results.push({
-      query: evalQuery.query,
-      modality: evalQuery.modality,
-      difficulty: evalQuery.difficulty,
-      groundTruthSpans: evalQuery.groundTruthSpans,
-      topResult: matches[0] || null,
-      bestIoU: bestIoU.iou,
-      r1_iou50: r1Hit,
-      r1_iou30: r1Loose,
-      reciprocalRank,
+      query: evalQuery.query, modality: evalQuery.modality, difficulty: evalQuery.difficulty,
+      groundTruthSpans: evalQuery.groundTruthSpans, topResult: matches[0] || null,
+      bestIoU: bestIoU.iou, r1_iou50: bestIoU.iou >= 0.5, r1_iou30: bestIoU.iou >= 0.3,
+      reciprocalRank: computeReciprocalRank(matches, evalQuery.groundTruthSpans, 0.3),
       matchCount: matches.length,
     });
   }
 
-  const totalQueries = results.length;
-  const r1_50 = results.filter(r => r.r1_iou50).length / Math.max(1, totalQueries);
-  const r1_30 = results.filter(r => r.r1_iou30).length / Math.max(1, totalQueries);
-  const mrr = results.reduce((s, r) => s + r.reciprocalRank, 0) / Math.max(1, totalQueries);
-  const meanIoU = results.reduce((s, r) => s + r.bestIoU, 0) / Math.max(1, totalQueries);
-
-  const payload = {
-    id,
-    topK,
-    createdAt: new Date().toISOString(),
-    summary: {
-      totalQueries,
-      'R@1_IoU>=0.5': Number(r1_50.toFixed(4)),
-      'R@1_IoU>=0.3': Number(r1_30.toFixed(4)),
-      MRR: Number(mrr.toFixed(4)),
-      meanIoU: Number(meanIoU.toFixed(4)),
-    },
-    results,
+  const n = Math.max(1, results.length);
+  const avg = (fn) => Number((results.reduce((s, r) => s + fn(r), 0) / n).toFixed(4));
+  const summary = {
+    totalQueries: results.length,
+    'R@1_IoU>=0.5': avg(r => r.r1_iou50 ? 1 : 0),
+    'R@1_IoU>=0.3': avg(r => r.r1_iou30 ? 1 : 0),
+    MRR: avg(r => r.reciprocalRank),
+    meanIoU: avg(r => r.bestIoU),
   };
 
-  writeArtifactJson(id, 'eval-results.json', payload);
+  writeArtifactJson(id, 'eval-results.json', { id, topK, createdAt: new Date().toISOString(), summary, results });
   printJson({
-    id,
-    summary: payload.summary,
-    results: results.map(r => ({
-      query: r.query,
-      difficulty: r.difficulty,
-      bestIoU: r.bestIoU,
-      r1_iou50: r.r1_iou50,
-      rr: r.reciprocalRank,
-    })),
+    id, summary,
+    results: results.map(r => ({ query: r.query, difficulty: r.difficulty, bestIoU: r.bestIoU, r1_iou50: r.r1_iou50, rr: r.reciprocalRank })),
   });
 }
 

@@ -81,33 +81,18 @@ Rules:
 function attachFramePaths(citations, searchResults, context) {
   return citations.map(c => {
     if (c.framePath) return c;
-
     const atSec = c.atSec ?? 0;
-
-    // Check search results for a nearby frame
     for (const r of (searchResults || [])) {
-      const rAt = r.atSec ?? r.startSec ?? 0;
-      if (Math.abs(rAt - atSec) < 5 && r.framePath) {
-        return { ...c, framePath: r.framePath };
-      }
+      if (Math.abs((r.atSec ?? r.startSec ?? 0) - atSec) < 5 && r.framePath) return { ...c, framePath: r.framePath };
     }
-
-    // Check context frames
     if (context && context.frames) {
-      let nearest = null;
-      let nearestDist = Infinity;
+      let nearest = null, nearestDist = Infinity;
       for (const f of context.frames) {
         const dist = Math.abs(f.atSec - atSec);
-        if (dist < nearestDist && f.framePath) {
-          nearest = f;
-          nearestDist = dist;
-        }
+        if (dist < nearestDist && f.framePath) { nearest = f; nearestDist = dist; }
       }
-      if (nearest && nearestDist < 10) {
-        return { ...c, framePath: nearest.framePath };
-      }
+      if (nearest && nearestDist < 10) return { ...c, framePath: nearest.framePath };
     }
-
     return c;
   });
 }
@@ -115,78 +100,45 @@ function attachFramePaths(citations, searchResults, context) {
 function generateHints(result, searchResults, videoId) {
   const hints = [];
   const confidence = result.confidence || 'high';
-
   if (confidence === 'partial' || confidence === 'low') {
-    // Check if results are spread across the video
-    const timestamps = (searchResults || []).map(r => r.atSec ?? r.startSec ?? 0);
-    if (timestamps.length >= 2) {
-      const span = Math.max(...timestamps) - Math.min(...timestamps);
-      if (span > 60) {
-        hints.push({
-          type: 'try_chapters',
-          message: 'This question spans the full video. Try: video-cli chapters ' + videoId,
-        });
-      }
+    const ts = (searchResults || []).map(r => r.atSec ?? r.startSec ?? 0);
+    if (ts.length >= 2 && Math.max(...ts) - Math.min(...ts) > 60) {
+      hints.push({ type: 'try_chapters', message: 'This question spans the full video. Try: video-cli chapters ' + videoId });
     }
-
-    hints.push({
-      type: 'try_broader_search',
-      message: 'Try rephrasing or use: video-cli search ' + videoId + ' "<broader query>"',
-    });
+    hints.push({ type: 'try_broader_search', message: 'Try rephrasing or use: video-cli search ' + videoId + ' "<broader query>"' });
   }
-
-  // If any citation has a frame path, hint that the agent can view it
-  const hasFrames = (result.citations || []).some(c => c.framePath);
-  if (hasFrames) {
-    const frameCitation = result.citations.find(c => c.framePath);
-    hints.push({
-      type: 'view_frame',
-      message: 'Visual evidence available. The frame path can be read directly by multimodal models.',
-      framePath: frameCitation.framePath,
-    });
+  const frameCitation = (result.citations || []).find(c => c.framePath);
+  if (frameCitation) {
+    hints.push({ type: 'view_frame', message: 'Visual evidence available. The frame path can be read directly by multimodal models.', framePath: frameCitation.framePath });
   }
-
   return hints;
 }
 
 function buildEvidencePrompt(searchResults, context) {
   const parts = [];
-
   if (searchResults && searchResults.length > 0) {
     parts.push('SEARCH RESULTS:');
     for (const r of searchResults.slice(0, 5)) {
-      const at = r.startSec ?? r.atSec ?? 0;
       const end = r.endSec ? `-${formatTime(r.endSec)}` : '';
-      parts.push(`  [${formatTime(at)}${end}] (${r.source}) ${(r.text || '(frame)').slice(0, 200)}`);
+      parts.push(`  [${formatTime(r.startSec ?? r.atSec ?? 0)}${end}] (${r.source}) ${(r.text || '(frame)').slice(0, 200)}`);
     }
   }
-
   if (context) {
-    if (context.utterances && context.utterances.length > 0) {
+    if (context.utterances?.length > 0) {
       parts.push('\nTRANSCRIPT CONTEXT:');
-      for (const u of context.utterances) {
-        parts.push(`  [${formatTime(u.startSec)}] ${u.text}`);
-      }
+      for (const u of context.utterances) parts.push(`  [${formatTime(u.startSec)}] ${u.text}`);
     }
-
-    if (context.ocrItems && context.ocrItems.length > 0) {
+    if (context.ocrItems?.length > 0) {
       parts.push('\nON-SCREEN TEXT:');
-      for (const o of context.ocrItems) {
-        parts.push(`  [${formatTime(o.atSec)}] ${o.text.slice(0, 150)}`);
-      }
+      for (const o of context.ocrItems) parts.push(`  [${formatTime(o.atSec)}] ${o.text.slice(0, 150)}`);
     }
-
-    if (context.frames && context.frames.length > 0) {
-      const sampled = context.frames.length <= 5
-        ? context.frames
-        : context.frames.filter((_, i) => i % Math.ceil(context.frames.length / 5) === 0);
+    if (context.frames?.length > 0) {
+      const step = Math.ceil(context.frames.length / 5);
+      const sampled = context.frames.length <= 5 ? context.frames : context.frames.filter((_, i) => i % step === 0);
       parts.push('\nVISUAL DESCRIPTIONS:');
-      for (const f of sampled) {
-        parts.push(`  [${formatTime(f.atSec)}] ${f.description.slice(0, 150)}`);
-      }
+      for (const f of sampled) parts.push(`  [${formatTime(f.atSec)}] ${f.description.slice(0, 150)}`);
     }
   }
-
   return parts.join('\n');
 }
 

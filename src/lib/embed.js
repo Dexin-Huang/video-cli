@@ -1,6 +1,6 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
-const { batchAsync, fetchWithRetry, guessMimeType } = require('./net');
+const { batchAsync, fetchWithRetry, extractGeminiError, guessMimeType } = require('./net');
 
 const DEFAULT_MODEL = 'gemini-embedding-2-preview';
 const DEFAULT_DIMENSIONS = 768;
@@ -47,7 +47,6 @@ async function callEmbedApi({ apiKey, model, dimensions, taskType, content }) {
 
   const payload = await response.json();
   if (!response.ok) {
-    const { extractGeminiError } = require('./net');
     throw new Error(`Gemini embedding request failed: ${extractGeminiError(payload)}`);
   }
 
@@ -107,96 +106,47 @@ async function buildEmbeddings({ apiKey, manifest, ocr, transcript, config }) {
   const sources = config.sources || { transcript: true, ocr: true, frames: true };
   const items = [];
 
-  // Collect transcript items to embed
+  const embedBatch = async (pending, embedFn, mapFn, concurrency = 15) => {
+    if (pending.length === 0) return;
+    const vectors = await batchAsync(pending, embedFn, concurrency, 'embedding');
+    for (let i = 0; i < pending.length; i++) items.push({ ...mapFn(pending[i]), vector: vectors[i] });
+  };
+
   const transcriptPending = [];
   if (sources.transcript && transcript && Array.isArray(transcript.items)) {
     let index = 0;
     for (const chunk of transcript.items) {
-      const utterances = Array.isArray(chunk.utterances) ? chunk.utterances : [];
-      for (const utterance of utterances) {
-        const text = String(utterance.transcript || '').trim();
-        if (!text) {
-          continue;
-        }
-        transcriptPending.push({ index, utterance, text });
-        index += 1;
+      for (const utt of (chunk.utterances || [])) {
+        const text = String(utt.transcript || '').trim();
+        if (text) transcriptPending.push({ index: index++, utt, text });
       }
     }
   }
+  await embedBatch(transcriptPending,
+    item => embedText({ apiKey, text: item.text, model, taskType, dimensions }),
+    item => ({ source: 'transcript', index: item.index, startSec: item.utt.startSec, endSec: item.utt.endSec, speaker: item.utt.speaker ?? null, text: item.text }));
 
-  if (transcriptPending.length > 0) {
-    const vectors = await batchAsync(transcriptPending, (item) =>
-      embedText({ apiKey, text: item.text, model, taskType, dimensions }), 15, 'embedding');
-    for (let i = 0; i < transcriptPending.length; i += 1) {
-      const item = transcriptPending[i];
-      items.push({
-        source: 'transcript',
-        index: item.index,
-        startSec: item.utterance.startSec,
-        endSec: item.utterance.endSec,
-        speaker: item.utterance.speaker ?? null,
-        text: item.text,
-        vector: vectors[i],
-      });
-    }
-  }
-
-  // Collect OCR items to embed
   const ocrPending = [];
   if (sources.ocr && ocr && Array.isArray(ocr.items)) {
-    for (let i = 0; i < ocr.items.length; i += 1) {
-      const ocrItem = ocr.items[i];
-      const text = String(ocrItem.text || '').trim();
-      if (!text) {
-        continue;
-      }
-      ocrPending.push({ index: i, ocrItem, text });
+    for (let i = 0; i < ocr.items.length; i++) {
+      const text = String(ocr.items[i].text || '').trim();
+      if (text) ocrPending.push({ index: i, item: ocr.items[i], text });
     }
   }
+  await embedBatch(ocrPending,
+    item => embedText({ apiKey, text: item.text, model, taskType, dimensions }),
+    item => ({ source: 'ocr', index: item.index, atSec: item.item.atSec, framePath: item.item.framePath || null, text: item.text }));
 
-  if (ocrPending.length > 0) {
-    const vectors = await batchAsync(ocrPending, (item) =>
-      embedText({ apiKey, text: item.text, model, taskType, dimensions }), 15, 'embedding');
-    for (let i = 0; i < ocrPending.length; i += 1) {
-      const item = ocrPending[i];
-      items.push({
-        source: 'ocr',
-        index: item.index,
-        atSec: item.ocrItem.atSec,
-        framePath: item.ocrItem.framePath || null,
-        text: item.text,
-        vector: vectors[i],
-      });
-    }
-  }
-
-  // Collect frame items to embed
   const framePending = [];
   if (sources.frames && manifest && Array.isArray(manifest.watchpoints)) {
-    for (let i = 0; i < manifest.watchpoints.length; i += 1) {
+    for (let i = 0; i < manifest.watchpoints.length; i++) {
       const wp = manifest.watchpoints[i];
-      const framePath = wp.framePath;
-      if (!framePath || !fs.existsSync(framePath)) {
-        continue;
-      }
-      framePending.push({ index: i, wp, framePath });
+      if (wp.framePath && fs.existsSync(wp.framePath)) framePending.push({ index: i, wp });
     }
   }
-
-  if (framePending.length > 0) {
-    const vectors = await batchAsync(framePending, (item) =>
-      embedImage({ apiKey, imagePath: item.framePath, model, taskType, dimensions }), 5, 'embedding');
-    for (let i = 0; i < framePending.length; i += 1) {
-      const item = framePending[i];
-      items.push({
-        source: 'frame',
-        index: item.index,
-        atSec: item.wp.atSec,
-        framePath: item.framePath,
-        vector: vectors[i],
-      });
-    }
-  }
+  await embedBatch(framePending,
+    item => embedImage({ apiKey, imagePath: item.wp.framePath, model, taskType, dimensions }),
+    item => ({ source: 'frame', index: item.index, atSec: item.wp.atSec, framePath: item.wp.framePath }), 5);
 
   return items;
 }

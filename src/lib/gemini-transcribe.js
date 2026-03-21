@@ -3,8 +3,6 @@ const path = require('node:path');
 const { fetchWithRetry, extractGeminiText, extractGeminiError } = require('./net');
 
 const DEFAULT_MODEL = 'gemini-3.1-flash-lite-preview';
-const MAX_CHUNK_SEC = 90;
-const MIN_CHUNK_SEC = 15;
 
 function createGeminiTranscribeProvider() {
   if (process.env.VIDEO_CLI_MOCK_GEMINI === '1') {

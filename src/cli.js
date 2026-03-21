@@ -60,60 +60,20 @@ async function main(argv) {
 
   const helpers = { requirePositional, parseNumberFlag, parseBooleanFlag, printJson };
 
-  switch (command) {
-    case 'ingest':
-      return runIngest(positionals, flags, helpers);
-    case 'setup':
-      return runSetup(positionals, flags, config, helpers);
-    case 'ask':
-      return runAsk(positionals, flags, config, helpers);
-    case 'list':
-      return runList(positionals, flags, config, helpers);
-    case 'config':
-      return runConfig(positionals, flags, config, helpers);
-    case 'inspect':
-      return runInspect(positionals, flags, config, helpers);
-    case 'timeline':
-      return runTimeline(positionals, flags, config, helpers);
-    case 'watchpoints':
-      return runWatchpoints(positionals, flags, config, helpers);
-    case 'bundle':
-      return runBundle(positionals, flags, config, helpers);
-    case 'brief':
-      return runBrief(positionals, flags, config, helpers);
-    case 'ocr':
-      return runOcr(positionals, flags, config, helpers);
-    case 'analyze':
-      return runAnalyze(positionals, flags, config, helpers);
-    case 'transcribe':
-      return runTranscribe(positionals, flags, config, helpers);
-    case 'grep':
-      return runGrep(positionals, flags, config, helpers);
-    case 'frame':
-      return runFrame(positionals, flags, config, helpers);
-    case 'clip':
-      return runClip(positionals, flags, config, helpers);
-    case 'embed':
-      return runEmbed(positionals, flags, config, helpers);
-    case 'search':
-      return runSearch(positionals, flags, config, helpers);
-    case 'context':
-      return runContext(positionals, flags, config, helpers);
-    case 'chapters':
-      return runChapters(positionals, flags, config, helpers);
-    case 'next':
-      return runNext(positionals, flags, config, helpers);
-    case 'describe':
-      return runDescribe(positionals, flags, config, helpers);
-    case 'status':
-      return runStatus(positionals, flags, config, helpers);
-    case 'eval:generate':
-      return runEvalGenerate(positionals, flags, config, helpers);
-    case 'eval:run':
-      return runEvalRun(positionals, flags, config, helpers);
-    default:
-      throw new Error(`Unknown command: ${command}. Run 'video-cli --help' to see available commands.`);
-  }
+  if (command === 'ingest') return runIngest(positionals, flags, helpers);
+
+  const commands = {
+    setup: runSetup, ask: runAsk, list: runList, config: runConfig,
+    inspect: runInspect, timeline: runTimeline, watchpoints: runWatchpoints,
+    bundle: runBundle, brief: runBrief, ocr: runOcr, analyze: runAnalyze,
+    transcribe: runTranscribe, grep: runGrep, frame: runFrame, clip: runClip,
+    embed: runEmbed, search: runSearch, context: runContext, chapters: runChapters,
+    next: runNext, describe: runDescribe, status: runStatus,
+    'eval:generate': runEvalGenerate, 'eval:run': runEvalRun,
+  };
+  const handler = commands[command];
+  if (!handler) throw new Error(`Unknown command: ${command}. Run 'video-cli --help' to see available commands.`);
+  return handler(positionals, flags, config, helpers);
 }
 
 function printHelp() {

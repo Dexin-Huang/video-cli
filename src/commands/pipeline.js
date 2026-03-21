@@ -20,10 +20,24 @@ const {
   probeVideo,
 } = require('../lib/media');
 const { readArtifactJson, writeArtifactJson } = require('../lib/artifacts');
-const { createProvider } = require('../lib/providers');
 const { buildEmbeddings } = require('../lib/embed');
 const { analyzeFrames, describeFrames, extractDenseFrames } = require('../lib/describe');
 const { batchAsync } = require('../lib/net');
+
+function createProvider(name) {
+  switch (name) {
+    case 'gemini':
+      return require('../lib/gemini').createGeminiProvider();
+    case 'elevenlabs':
+      return require('../lib/elevenlabs').createElevenLabsProvider();
+    case 'deepgram':
+      return require('../lib/deepgram').createDeepgramProvider();
+    case 'gemini-transcribe':
+      return require('../lib/gemini-transcribe').createGeminiTranscribeProvider();
+    default:
+      throw new Error(`Provider "${name}" is not implemented yet. Supported providers: gemini, elevenlabs, deepgram, gemini-transcribe.`);
+  }
+}
 
 function parseFrameRate(value) {
   if (!value || typeof value !== 'string' || !value.includes('/')) {
@@ -102,10 +116,9 @@ async function runIngest(positionals, flags, { requirePositional, parseNumberFla
 
   let changePointsSec;
   let watchpoints;
-  let sceneScores = null;
 
   if (adaptive) {
-    sceneScores = detectSceneChangesWithScores(resolvedInput);
+    const sceneScores = detectSceneChangesWithScores(resolvedInput);
     changePointsSec = sceneScores.filter(e => e.score >= sceneThreshold).map(e => e.atSec);
     watchpoints = pickAdaptiveWatchpoints(durationSec, sceneScores, {
       minCount: Math.max(6, Math.ceil(durationSec / 60)),
@@ -176,47 +189,24 @@ async function runTranscribe(positionals, flags, config, { requirePositional, pa
   const language = flags.language ? String(flags.language) : config.transcribe.language;
   const chunks = buildAudioChunks(manifest.media.durationSec, chunkSeconds, limit);
   const results = [];
+  const transcribePrompt = 'Transcribe the spoken audio in this clip. Return plain text only. Do not add commentary or analysis. If there is no speech, return an empty string.';
 
   for (const chunk of chunks) {
     const silences = trimSilence
-      ? detectSilences(manifest.sourcePath, chunk.startSec, chunk.endSec - chunk.startSec, {
-          minSilenceSec,
-          silenceNoiseDb,
-        })
+      ? detectSilences(manifest.sourcePath, chunk.startSec, chunk.endSec - chunk.startSec, { minSilenceSec, silenceNoiseDb })
       : [];
-
     const segments = trimSilence
       ? buildSpeechSegments(chunk.startSec, chunk.endSec, silences, { padSec })
-      : [{
-          startSec: chunk.startSec,
-          endSec: chunk.endSec,
-          durationSec: Number((chunk.endSec - chunk.startSec).toFixed(3)),
-        }];
+      : [{ startSec: chunk.startSec, endSec: chunk.endSec, durationSec: Number((chunk.endSec - chunk.startSec).toFixed(3)) }];
 
     const segmentResults = [];
     const words = [];
     const utteranceItems = [];
 
-    // Phase 1: extract audio sequentially (disk I/O)
-    const transcribePrompt = [
-      'Transcribe the spoken audio in this clip.',
-      'Return plain text only.',
-      'Do not add commentary or analysis.',
-      'If there is no speech, return an empty string.',
-    ].join(' ');
-
     const prepared = [];
     for (const [index, segment] of segments.entries()) {
-      if (segment.durationSec <= 0.05) {
-        continue;
-      }
-
-      const audioPath = createArtifactPath(
-        id,
-        'audio',
-        `segment-${formatSecondsForFile(segment.startSec)}-${formatSecondsForFile(segment.endSec)}.mp3`
-      );
-
+      if (segment.durationSec <= 0.05) continue;
+      const audioPath = createArtifactPath(id, 'audio', `segment-${formatSecondsForFile(segment.startSec)}-${formatSecondsForFile(segment.endSec)}.mp3`);
       extractAudioChunk(manifest.sourcePath, segment.startSec, segment.durationSec, audioPath);
       prepared.push({ index, segment, audioPath });
     }
@@ -247,73 +237,34 @@ async function runTranscribe(positionals, flags, config, { requirePositional, pa
       utteranceItems.push(...remappedUtterances);
 
       // Collect audio events (laughter, applause, music, etc.) with remapped timestamps
-      if (Array.isArray(transcript.audioEvents)) {
-        for (const event of transcript.audioEvents) {
-          audioEventItems.push({
-            event: event.event,
-            startSec: Number((segment.startSec + event.startSec).toFixed(3)),
-            endSec: Number((segment.startSec + event.endSec).toFixed(3)),
-          });
-        }
+      for (const event of (transcript.audioEvents || [])) {
+        audioEventItems.push({ event: event.event, startSec: Number((segment.startSec + event.startSec).toFixed(3)), endSec: Number((segment.startSec + event.endSec).toFixed(3)) });
       }
-
       segmentResults.push({
-        index,
-        startSec: segment.startSec,
-        endSec: segment.endSec,
-        durationSec: segment.durationSec,
-        audioPath,
-        text: String(transcript.text || '').trim(),
-        wordCount: remappedWords.length,
-        utteranceCount: remappedUtterances.length,
+        index, startSec: segment.startSec, endSec: segment.endSec, durationSec: segment.durationSec,
+        audioPath, text: String(transcript.text || '').trim(),
+        wordCount: remappedWords.length, utteranceCount: remappedUtterances.length,
         languageCode: transcript.languageCode || null,
       });
     }
 
-    const speechDurationSec = Number(
-      segmentResults.reduce((sum, item) => sum + item.durationSec, 0).toFixed(3)
-    );
-    const totalDurationSec = Number((chunk.endSec - chunk.startSec).toFixed(3));
-    const skippedSilenceSec = Number(Math.max(0, totalDurationSec - speechDurationSec).toFixed(3));
-
+    const speechDurationSec = Number(segmentResults.reduce((sum, item) => sum + item.durationSec, 0).toFixed(3));
+    const skippedSilenceSec = Number(Math.max(0, Number((chunk.endSec - chunk.startSec).toFixed(3)) - speechDurationSec).toFixed(3));
     results.push({
-      startSec: chunk.startSec,
-      endSec: chunk.endSec,
-      trimSilenceApplied: trimSilence,
-      speechDurationSec,
-      skippedSilenceSec,
-      silences: silences.map(item => ({
-        startSec: Number((chunk.startSec + item.startSec).toFixed(3)),
-        endSec: Number((chunk.startSec + item.endSec).toFixed(3)),
-        durationSec: item.durationSec,
-      })),
-      segments: segmentResults,
-      text: segmentResults.map(item => item.text).filter(Boolean).join('\n').trim(),
-      words,
-      utterances: utteranceItems,
-      audioEvents: audioEventItems,
+      startSec: chunk.startSec, endSec: chunk.endSec, trimSilenceApplied: trimSilence,
+      speechDurationSec, skippedSilenceSec,
+      silences: silences.map(s => ({ startSec: Number((chunk.startSec + s.startSec).toFixed(3)), endSec: Number((chunk.startSec + s.endSec).toFixed(3)), durationSec: s.durationSec })),
+      segments: segmentResults, text: segmentResults.map(s => s.text).filter(Boolean).join('\n').trim(),
+      words, utterances: utteranceItems, audioEvents: audioEventItems,
     });
   }
 
   const payload = {
-    id,
-    provider: providerName,
-    model,
-    chunkSeconds,
-    trimSilence,
-    minSilenceSec,
-    padSec,
-    silenceNoiseDb,
-    diarize,
-    utterances,
-    smartFormat,
-    punctuate,
-    detectLanguage,
-    language,
-    createdAt: new Date().toISOString(),
-    items: results,
+    id, provider: providerName, model, chunkSeconds, trimSilence,
+    minSilenceSec, padSec, silenceNoiseDb, diarize, utterances,
+    smartFormat, punctuate, detectLanguage, language,
+    createdAt: new Date().toISOString(), items: results,
   };
-
   writeArtifactJson(id, 'transcript.json', payload);
   printJson(payload);
 }
@@ -327,37 +278,14 @@ async function runOcr(positionals, flags, config, { requirePositional, parseNumb
   const model = String(flags.model || config.ocr.model);
   const selected = manifest.watchpoints.slice(0, Math.max(1, Math.floor(limit)));
   const watchpoints = materializeWatchpoints(manifest, selected);
-  const ocrPrompt = [
-    'Extract the visible text from this video frame.',
-    'Return plain text only.',
-    'Keep line breaks when they help preserve structure.',
-    'If there is no meaningful visible text, return an empty string.',
-  ].join(' ');
+  const ocrPrompt = 'Extract the visible text from this video frame. Return plain text only. Keep line breaks when they help preserve structure. If there is no meaningful visible text, return an empty string.';
 
   const results = await batchAsync(watchpoints, async (item) => {
-    const ocr = await provider.ocrImage({
-      imagePath: item.framePath,
-      model,
-      prompt: ocrPrompt,
-    });
-
-    return {
-      atSec: item.atSec,
-      kind: item.kind,
-      reason: item.reason,
-      framePath: item.framePath,
-      text: ocr.text.trim(),
-    };
+    const ocr = await provider.ocrImage({ imagePath: item.framePath, model, prompt: ocrPrompt });
+    return { atSec: item.atSec, kind: item.kind, reason: item.reason, framePath: item.framePath, text: ocr.text.trim() };
   }, 5);
 
-  const payload = {
-    id,
-    provider: providerName,
-    model,
-    createdAt: new Date().toISOString(),
-    items: results,
-  };
-
+  const payload = { id, provider: providerName, model, createdAt: new Date().toISOString(), items: results };
   writeArtifactJson(id, 'ocr.json', payload);
   printJson(payload);
 }
@@ -392,23 +320,15 @@ async function runEmbed(positionals, flags, config, { requirePositional, parseNu
   }
 
   if (sources.frames) {
-    const { createArtifactPath: getArtifactPath } = require('../lib/store');
-    const withPaths = manifest.watchpoints.map(wp => {
-      const framePath = getArtifactPath(
-        id, 'watchpoints',
-        `watchpoint-${String(wp.atSec.toFixed(3)).replace('.', '_')}.jpg`
-      );
-      return { ...wp, framePath };
-    });
-
-    const allExist = withPaths.every(wp => fs.existsSync(wp.framePath));
-    if (allExist) {
+    const withPaths = manifest.watchpoints.map(wp => ({
+      ...wp,
+      framePath: createArtifactPath(id, 'watchpoints', `watchpoint-${String(wp.atSec.toFixed(3)).replace('.', '_')}.jpg`),
+    }));
+    if (withPaths.every(wp => fs.existsSync(wp.framePath))) {
       manifest.watchpoints = withPaths;
     } else {
       try {
-        const selected = manifest.watchpoints.slice();
-        const materialized = materializeWatchpoints(manifest, selected);
-        manifest.watchpoints = materialized;
+        manifest.watchpoints = materializeWatchpoints(manifest, manifest.watchpoints.slice());
       } catch {
         manifest.watchpoints = withPaths.filter(wp => fs.existsSync(wp.framePath));
       }
@@ -424,28 +344,20 @@ async function runEmbed(positionals, flags, config, { requirePositional, parseNu
     config: embedConfig,
   });
 
-  const transcriptCount = items.filter(i => i.source === 'transcript').length;
-  const ocrCount = items.filter(i => i.source === 'ocr').length;
-  const frameCount = items.filter(i => i.source === 'frame').length;
+  const srcCounts = { transcript: 0, ocr: 0, frames: 0 };
+  for (const i of items) {
+    if (i.source === 'transcript') srcCounts.transcript++;
+    else if (i.source === 'ocr') srcCounts.ocr++;
+    else if (i.source === 'frame') srcCounts.frames++;
+  }
 
-  const payload = {
-    id,
-    provider: embedConfig.provider,
-    model: embedConfig.model,
-    dimensions,
-    createdAt: new Date().toISOString(),
-    sources: { transcript: transcriptCount, ocr: ocrCount, frames: frameCount },
-    items,
-  };
-
-  writeArtifactJson(id, 'embeddings.json', payload);
+  writeArtifactJson(id, 'embeddings.json', {
+    id, provider: embedConfig.provider, model: embedConfig.model,
+    dimensions, createdAt: new Date().toISOString(), sources: srcCounts, items,
+  });
   printJson({
-    id,
-    provider: embedConfig.provider,
-    model: embedConfig.model,
-    dimensions,
-    totalEmbeddings: items.length,
-    sources: { transcript: transcriptCount, ocr: ocrCount, frames: frameCount },
+    id, provider: embedConfig.provider, model: embedConfig.model,
+    dimensions, totalEmbeddings: items.length, sources: srcCounts,
   });
 }
 
@@ -487,7 +399,6 @@ async function runDescribe(positionals, flags, config, { requirePositional, pars
 
   const descriptions = await describeFrames({
     apiKey,
-    manifest,
     frames,
     model,
     prompt: [
@@ -497,23 +408,8 @@ async function runDescribe(positionals, flags, config, { requirePositional, pars
     ].join(' '),
   });
 
-  const payload = {
-    id,
-    model,
-    intervalSec,
-    createdAt: new Date().toISOString(),
-    frameCount: descriptions.length,
-    items: descriptions,
-  };
-
-  writeArtifactJson(id, 'descriptions.json', payload);
-  printJson({
-    id,
-    model,
-    intervalSec,
-    frameCount: descriptions.length,
-    durationSec: manifest.media.durationSec,
-  });
+  writeArtifactJson(id, 'descriptions.json', { id, model, intervalSec, createdAt: new Date().toISOString(), frameCount: descriptions.length, items: descriptions });
+  printJson({ id, model, intervalSec, frameCount: descriptions.length, durationSec: manifest.media.durationSec });
 }
 
 module.exports = {

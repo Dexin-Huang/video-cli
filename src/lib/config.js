@@ -1,8 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const DEFAULT_PRESET = 'balanced';
-
 const BUILTIN_PRESETS = {
   // Golden path: Gemini for everything. One API key, one provider.
   // Override with --provider elevenlabs for word-level timestamps + audio events.
@@ -52,7 +50,7 @@ function getRuntimeConfig(repoRoot) {
   const presetName = String(
     process.env.VIDEO_CLI_PRESET ||
     userConfig.preset ||
-    DEFAULT_PRESET
+    'balanced'
   );
 
   const preset = BUILTIN_PRESETS[presetName];
@@ -62,77 +60,35 @@ function getRuntimeConfig(repoRoot) {
 
   const merged = deepMerge(preset, userConfig);
 
-  if (process.env.VIDEO_CLI_OCR_PROVIDER) {
-    merged.ocr.provider = process.env.VIDEO_CLI_OCR_PROVIDER;
-  }
-  if (process.env.VIDEO_CLI_OCR_MODEL || process.env.GEMINI_OCR_MODEL) {
-    merged.ocr.model = process.env.VIDEO_CLI_OCR_MODEL || process.env.GEMINI_OCR_MODEL;
-  }
-  if (process.env.VIDEO_CLI_TRANSCRIBE_PROVIDER) {
-    merged.transcribe.provider = process.env.VIDEO_CLI_TRANSCRIBE_PROVIDER;
-  }
-  if (
-    process.env.VIDEO_CLI_TRANSCRIBE_MODEL ||
-    process.env.DEEPGRAM_TRANSCRIBE_MODEL ||
-    process.env.GEMINI_TRANSCRIBE_MODEL
-  ) {
-    merged.transcribe.model =
-      process.env.VIDEO_CLI_TRANSCRIBE_MODEL ||
-      process.env.DEEPGRAM_TRANSCRIBE_MODEL ||
-      process.env.GEMINI_TRANSCRIBE_MODEL;
-  }
-  if (process.env.VIDEO_CLI_TRANSCRIBE_CHUNK_SECONDS) {
-    merged.transcribe.chunkSeconds = Number(process.env.VIDEO_CLI_TRANSCRIBE_CHUNK_SECONDS);
-  }
-  if (process.env.VIDEO_CLI_TRANSCRIBE_TRIM_SILENCE) {
-    merged.transcribe.trimSilence = parseBooleanEnv(process.env.VIDEO_CLI_TRANSCRIBE_TRIM_SILENCE);
-  }
-  if (process.env.VIDEO_CLI_TRANSCRIBE_MIN_SILENCE_SEC) {
-    merged.transcribe.minSilenceSec = Number(process.env.VIDEO_CLI_TRANSCRIBE_MIN_SILENCE_SEC);
-  }
-  if (process.env.VIDEO_CLI_TRANSCRIBE_PAD_SEC) {
-    merged.transcribe.padSec = Number(process.env.VIDEO_CLI_TRANSCRIBE_PAD_SEC);
-  }
-  if (process.env.VIDEO_CLI_TRANSCRIBE_SILENCE_NOISE_DB) {
-    merged.transcribe.silenceNoiseDb = Number(process.env.VIDEO_CLI_TRANSCRIBE_SILENCE_NOISE_DB);
-  }
-  if (process.env.VIDEO_CLI_TRANSCRIBE_DIARIZE) {
-    merged.transcribe.diarize = parseBooleanEnv(process.env.VIDEO_CLI_TRANSCRIBE_DIARIZE);
-  }
-  if (process.env.VIDEO_CLI_TRANSCRIBE_UTTERANCES) {
-    merged.transcribe.utterances = parseBooleanEnv(process.env.VIDEO_CLI_TRANSCRIBE_UTTERANCES);
-  }
-  if (process.env.VIDEO_CLI_TRANSCRIBE_SMART_FORMAT) {
-    merged.transcribe.smartFormat = parseBooleanEnv(process.env.VIDEO_CLI_TRANSCRIBE_SMART_FORMAT);
-  }
-  if (process.env.VIDEO_CLI_TRANSCRIBE_PUNCTUATE) {
-    merged.transcribe.punctuate = parseBooleanEnv(process.env.VIDEO_CLI_TRANSCRIBE_PUNCTUATE);
-  }
-  if (process.env.VIDEO_CLI_TRANSCRIBE_DETECT_LANGUAGE) {
-    merged.transcribe.detectLanguage = parseBooleanEnv(process.env.VIDEO_CLI_TRANSCRIBE_DETECT_LANGUAGE);
-  }
-  if (process.env.VIDEO_CLI_TRANSCRIBE_LANGUAGE) {
-    merged.transcribe.language = process.env.VIDEO_CLI_TRANSCRIBE_LANGUAGE;
-  }
+  const e = process.env;
+  const str = (target, key, ...envKeys) => {
+    const val = envKeys.reduce((v, k) => v || e[k], undefined);
+    if (val) target[key] = val;
+  };
+  const num = (target, key, envKey) => { if (e[envKey]) target[key] = Number(e[envKey]); };
+  const bool = (target, key, envKey) => { if (e[envKey]) target[key] = parseBooleanEnv(e[envKey]); };
 
-  if (process.env.VIDEO_CLI_EMBED_PROVIDER) {
-    merged.embed.provider = process.env.VIDEO_CLI_EMBED_PROVIDER;
-  }
-  if (process.env.VIDEO_CLI_EMBED_MODEL) {
-    merged.embed.model = process.env.VIDEO_CLI_EMBED_MODEL;
-  }
-  if (process.env.VIDEO_CLI_EMBED_DIMENSIONS) {
-    merged.embed.dimensions = Number(process.env.VIDEO_CLI_EMBED_DIMENSIONS);
-  }
-  if (process.env.VIDEO_CLI_EMBED_TRANSCRIPT) {
-    merged.embed.sources.transcript = parseBooleanEnv(process.env.VIDEO_CLI_EMBED_TRANSCRIPT);
-  }
-  if (process.env.VIDEO_CLI_EMBED_OCR) {
-    merged.embed.sources.ocr = parseBooleanEnv(process.env.VIDEO_CLI_EMBED_OCR);
-  }
-  if (process.env.VIDEO_CLI_EMBED_FRAMES) {
-    merged.embed.sources.frames = parseBooleanEnv(process.env.VIDEO_CLI_EMBED_FRAMES);
-  }
+  str(merged.ocr, 'provider', 'VIDEO_CLI_OCR_PROVIDER');
+  str(merged.ocr, 'model', 'VIDEO_CLI_OCR_MODEL', 'GEMINI_OCR_MODEL');
+  str(merged.transcribe, 'provider', 'VIDEO_CLI_TRANSCRIBE_PROVIDER');
+  str(merged.transcribe, 'model', 'VIDEO_CLI_TRANSCRIBE_MODEL', 'DEEPGRAM_TRANSCRIBE_MODEL', 'GEMINI_TRANSCRIBE_MODEL');
+  num(merged.transcribe, 'chunkSeconds', 'VIDEO_CLI_TRANSCRIBE_CHUNK_SECONDS');
+  bool(merged.transcribe, 'trimSilence', 'VIDEO_CLI_TRANSCRIBE_TRIM_SILENCE');
+  num(merged.transcribe, 'minSilenceSec', 'VIDEO_CLI_TRANSCRIBE_MIN_SILENCE_SEC');
+  num(merged.transcribe, 'padSec', 'VIDEO_CLI_TRANSCRIBE_PAD_SEC');
+  num(merged.transcribe, 'silenceNoiseDb', 'VIDEO_CLI_TRANSCRIBE_SILENCE_NOISE_DB');
+  bool(merged.transcribe, 'diarize', 'VIDEO_CLI_TRANSCRIBE_DIARIZE');
+  bool(merged.transcribe, 'utterances', 'VIDEO_CLI_TRANSCRIBE_UTTERANCES');
+  bool(merged.transcribe, 'smartFormat', 'VIDEO_CLI_TRANSCRIBE_SMART_FORMAT');
+  bool(merged.transcribe, 'punctuate', 'VIDEO_CLI_TRANSCRIBE_PUNCTUATE');
+  bool(merged.transcribe, 'detectLanguage', 'VIDEO_CLI_TRANSCRIBE_DETECT_LANGUAGE');
+  str(merged.transcribe, 'language', 'VIDEO_CLI_TRANSCRIBE_LANGUAGE');
+  str(merged.embed, 'provider', 'VIDEO_CLI_EMBED_PROVIDER');
+  str(merged.embed, 'model', 'VIDEO_CLI_EMBED_MODEL');
+  num(merged.embed, 'dimensions', 'VIDEO_CLI_EMBED_DIMENSIONS');
+  bool(merged.embed.sources, 'transcript', 'VIDEO_CLI_EMBED_TRANSCRIPT');
+  bool(merged.embed.sources, 'ocr', 'VIDEO_CLI_EMBED_OCR');
+  bool(merged.embed.sources, 'frames', 'VIDEO_CLI_EMBED_FRAMES');
 
   return merged;
 }

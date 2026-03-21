@@ -1,10 +1,9 @@
-const fs = require('node:fs');
-
 const { loadManifest } = require('../lib/store');
-const { readArtifactJson, writeArtifactJson } = require('../lib/artifacts');
+const { readArtifactJson } = require('../lib/artifacts');
 const { findMatches, semanticSearch, getContext } = require('../lib/search');
 const { embedText } = require('../lib/embed');
 const { askQuestion } = require('../lib/ask');
+const { jitEnrich } = require('../lib/describe');
 
 async function runAsk(positionals, flags, config, { requirePositional, printJson }) {
   const id = requirePositional(positionals, 0, '<video-id>');
@@ -35,40 +34,15 @@ async function runAsk(positionals, flags, config, { requirePositional, printJson
     lexicalMatches, descriptions, topK: 5,
   });
 
-  // Gather context around the top result
   const topAt = searchResults[0]
     ? (searchResults[0].startSec ?? searchResults[0].atSec ?? 0)
     : 0;
 
   let context = null;
   if (topAt > 0 || searchResults.length > 0) {
-    // JIT enrich if source exists and no descriptions for this window
     const startSec = Math.max(0, topAt - 10);
     const endSec = topAt + 15;
-
-    if (manifest.sourcePath && fs.existsSync(manifest.sourcePath)) {
-      const hasCoverage = descriptions && Array.isArray(descriptions.items) &&
-        descriptions.items.some(d => d.atSec >= startSec && d.atSec <= endSec);
-      if (!hasCoverage) {
-        const { enrichRegion } = require('../lib/describe');
-        const descModel = config.ocr.model || 'gemini-3.1-flash-lite-preview';
-        const newItems = await enrichRegion({
-          apiKey, model: descModel,
-          sourcePath: manifest.sourcePath, videoId: id,
-          startSec, endSec, intervalSec: 2,
-          existingDescriptions: descriptions,
-        });
-        if (newItems.length > 0) {
-          const desc = descriptions || { id, model: descModel, intervalSec: 2, createdAt: new Date().toISOString(), frameCount: 0, items: [] };
-          desc.items.push(...newItems);
-          desc.items.sort((a, b) => a.atSec - b.atSec);
-          desc.frameCount = desc.items.length;
-          writeArtifactJson(id, 'descriptions.json', desc);
-        }
-      }
-    }
-
-    // Re-read only if enrichment wrote new items, otherwise use what we have
+    descriptions = await jitEnrich({ id, manifest, descriptions, startSec, endSec, model: config.ocr.model });
     if (!descriptions) descriptions = readArtifactJson(id, 'descriptions.json');
     context = getContext({ atSec: topAt, windowSec: 12, transcript, ocr, descriptions, manifest });
   }

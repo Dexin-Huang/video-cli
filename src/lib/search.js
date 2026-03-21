@@ -1,8 +1,6 @@
-const STOP_WORDS = new Set('the and that this with from have are was were for not they what been will when your like just also about into more some very then there here these those would could other than show where which does scene moment visual first after before during being make made'.split(' '));
+const { cosineSimilarity } = require('./embed');
 
-// ============================================================
-// LEXICAL SEARCH — substring matching (used by grep and as search input)
-// ============================================================
+const STOP_WORDS = new Set('the and that this with from have are was were for not they what been will when your like just also about into more some very then there here these those would could other than show where which does scene moment visual first after before during being make made'.split(' '));
 
 function findMatches({ query, ocr, transcript }) {
   const needle = String(query || '').toLowerCase();
@@ -64,10 +62,6 @@ function appendTranscriptMatches(matches, item, needle) {
     matches.push({ source: 'transcript', startSec: item.startSec, endSec: item.endSec, text: item.text });
   }
 }
-
-// ============================================================
-// SEMANTIC SEARCH — ported from research/search_arch.js (collapsed pipeline)
-// ============================================================
 
 function semanticSearch({ query, queryVec, embeddings, lexicalMatches, descriptions, topK }) {
   const byKey = new Map();
@@ -155,26 +149,21 @@ function semanticSearch({ query, queryVec, embeddings, lexicalMatches, descripti
   return kept.slice(0, topK || 5);
 }
 
-// ============================================================
-// CONTEXT — everything around a timestamp
-// ============================================================
-
 function getContext({ atSec, windowSec, transcript, ocr, descriptions, manifest }) {
   const startSec = Math.max(0, atSec - windowSec);
   const endSec = atSec + windowSec;
 
   const utterances = [];
+  const audioEvents = [];
   if (transcript && Array.isArray(transcript.items)) {
     for (const chunk of transcript.items) {
       for (const utt of (chunk.utterances || [])) {
         if (utt.endSec > startSec && utt.startSec < endSec) {
-          utterances.push({
-            startSec: utt.startSec,
-            endSec: utt.endSec,
-            speaker: utt.speaker ?? null,
-            text: utt.transcript,
-          });
+          utterances.push({ startSec: utt.startSec, endSec: utt.endSec, speaker: utt.speaker ?? null, text: utt.transcript });
         }
+      }
+      for (const event of (chunk.audioEvents || [])) {
+        if (event.startSec >= startSec && event.startSec <= endSec) audioEvents.push(event);
       }
     }
   }
@@ -182,18 +171,14 @@ function getContext({ atSec, windowSec, transcript, ocr, descriptions, manifest 
   const ocrItems = [];
   if (ocr && Array.isArray(ocr.items)) {
     for (const item of ocr.items) {
-      if (item.atSec >= startSec && item.atSec <= endSec) {
-        ocrItems.push({ atSec: item.atSec, text: item.text, framePath: item.framePath });
-      }
+      if (item.atSec >= startSec && item.atSec <= endSec) ocrItems.push({ atSec: item.atSec, text: item.text, framePath: item.framePath });
     }
   }
 
   const frames = [];
   if (descriptions && Array.isArray(descriptions.items)) {
     for (const d of descriptions.items) {
-      if (d.atSec >= startSec && d.atSec <= endSec) {
-        frames.push({ atSec: d.atSec, description: d.description, framePath: d.framePath || null });
-      }
+      if (d.atSec >= startSec && d.atSec <= endSec) frames.push({ atSec: d.atSec, description: d.description, framePath: d.framePath || null });
     }
   }
 
@@ -204,41 +189,16 @@ function getContext({ atSec, windowSec, transcript, ocr, descriptions, manifest 
     }
   }
 
-  const audioEvents = [];
-  if (transcript && Array.isArray(transcript.items)) {
-    for (const chunk of transcript.items) {
-      for (const event of (chunk.audioEvents || [])) {
-        if (event.startSec >= startSec && event.startSec <= endSec) {
-          audioEvents.push(event);
-        }
-      }
-    }
-  }
-
-  const context = {
-    atSec,
-    windowSec,
-    startSec,
-    endSec,
-    utterances,
-    ocrItems,
-    frames,
-    sceneChanges,
-    audioEvents,
+  return {
+    atSec, windowSec, startSec, endSec,
+    utterances, ocrItems, frames, sceneChanges, audioEvents,
+    suggestedCommands: [
+      `video-cli frame <id> --at ${atSec}`,
+      `video-cli clip <id> --at ${atSec} --pre 5 --post 10`,
+      `video-cli next <id> --from ${endSec}`,
+    ],
   };
-
-  context.suggestedCommands = [
-    `video-cli frame <id> --at ${atSec}`,
-    `video-cli clip <id> --at ${atSec} --pre 5 --post 10`,
-    `video-cli next <id> --from ${endSec}`,
-  ];
-
-  return context;
 }
-
-// ============================================================
-// CHAPTERS — segment video into semantic chapters
-// ============================================================
 
 function buildChapters({ manifest, transcript, descriptions }) {
   const durationSec = manifest.media.durationSec;
@@ -299,10 +259,6 @@ function buildChapters({ manifest, transcript, descriptions }) {
   return chapters;
 }
 
-// ============================================================
-// NEXT — find next significant moment after a timestamp
-// ============================================================
-
 function findNext({ fromSec, transcript, ocr, descriptions, manifest }) {
   const candidates = [];
 
@@ -352,22 +308,6 @@ function findNext({ fromSec, transcript, ocr, descriptions, manifest }) {
   // Return the earliest candidate
   candidates.sort((a, b) => a.atSec - b.atSec);
   return candidates[0] || null;
-}
-
-// ============================================================
-// UTILITIES
-// ============================================================
-
-function cosineSimilarity(vecA, vecB) {
-  if (!vecA || !vecB || vecA.length !== vecB.length || vecA.length === 0) return 0;
-  let dot = 0, magA = 0, magB = 0;
-  for (let i = 0; i < vecA.length; i += 1) {
-    dot += vecA[i] * vecB[i];
-    magA += vecA[i] * vecA[i];
-    magB += vecB[i] * vecB[i];
-  }
-  const denom = Math.sqrt(magA) * Math.sqrt(magB);
-  return denom === 0 ? 0 : dot / denom;
 }
 
 function zNormalizeScores(items) {

@@ -38,50 +38,16 @@ function probeVideo(filePath) {
 }
 
 function detectSceneChanges(filePath, threshold) {
-  return detectSceneChangesAtThreshold(filePath, threshold);
-}
-
-function detectSceneChangesAtThreshold(filePath, threshold) {
-  const nullSink = os.platform() === 'win32' ? 'NUL' : '/dev/null';
-  const filter = `select='gt(scene,${threshold})',showinfo`;
-  const result = runProcess('ffmpeg', [
-    '-hide_banner',
-    '-i', filePath,
-    '-filter:v', filter,
-    '-vsync', 'vfr',
-    '-f', 'null',
-    nullSink,
-  ], { allowFailure: true });
-
-  const matches = [...result.stderr.matchAll(/pts_time:([0-9]+(?:\.[0-9]+)?)/g)];
-  const seen = new Set();
-  const points = [];
-
-  for (const match of matches) {
-    const value = Number(match[1]);
-    if (!Number.isFinite(value)) {
-      continue;
-    }
-    const rounded = Number(value.toFixed(3));
-    const key = rounded.toFixed(3);
-    if (seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    points.push(rounded);
-  }
-
-  points.sort((left, right) => left - right);
-  return points;
+  return detectSceneChangesWithScores(filePath, threshold).map(e => e.atSec);
 }
 
 function detectSceneChangesWithScores(filePath, threshold) {
   const t = threshold || 0.35;
   const nullSink = os.platform() === 'win32' ? 'NUL' : '/dev/null';
-  const filter = `select='gt(scene,${t})',showinfo`;
   const result = runProcess('ffmpeg', [
     '-hide_banner', '-i', filePath,
-    '-filter:v', filter, '-vsync', 'vfr', '-f', 'null', nullSink,
+    '-filter:v', `select='gt(scene,${t})',showinfo`,
+    '-vsync', 'vfr', '-f', 'null', nullSink,
   ], { allowFailure: true });
 
   const seen = new Set();
@@ -98,8 +64,7 @@ function detectSceneChangesWithScores(filePath, threshold) {
 }
 
 function pickAdaptiveWatchpoints(durationSec, sceneScores, options = {}) {
-  const minCountPerMinute = options.minCountPerMinute || 2;
-  const minCount = options.minCount || Math.max(6, Math.ceil((durationSec / 60) * minCountPerMinute));
+  const minCount = options.minCount || Math.max(6, Math.ceil(durationSec / 30));
   const maxCount = options.maxCount || Math.max(minCount, Math.ceil(durationSec / 15));
   const sigmaMultiplier = options.sigmaMultiplier || 1.0;
   const minGapSec = options.minGapSec || 3;
@@ -214,29 +179,17 @@ function pickWatchpoints(durationSec, changePointsSec, requestedCount) {
     return items;
   }
 
-  const keep = [];
-  keep.push(items[0]);
+  const kept = new Map();
+  kept.set(items[0].atSec.toFixed(3), items[0]);
   if (items.length > 1) {
     const interiorCount = maxCount - 2;
     for (let index = 1; index <= interiorCount; index += 1) {
-      const position = Math.round((index * (items.length - 1)) / (interiorCount + 1));
-      keep.push(items[position]);
+      const pos = Math.round((index * (items.length - 1)) / (interiorCount + 1));
+      kept.set(items[pos].atSec.toFixed(3), items[pos]);
     }
-    keep.push(items[items.length - 1]);
+    kept.set(items[items.length - 1].atSec.toFixed(3), items[items.length - 1]);
   }
-
-  items = [];
-  const seen = new Set();
-  for (const item of keep) {
-    const key = item.atSec.toFixed(3);
-    if (seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    items.push(item);
-  }
-  items.sort((left, right) => left.atSec - right.atSec);
-  return items;
+  return Array.from(kept.values()).sort((a, b) => a.atSec - b.atSec);
 }
 
 function extractFrame(sourcePath, atSec, outputPath) {
@@ -298,81 +251,42 @@ function buildSpeechSegments(startSec, endSec, silences, options = {}) {
 
   const speechRanges = [];
   let cursor = 0;
-
   for (const silence of silentRanges) {
-    const silenceStartSec = Math.max(0, Math.min(durationSec, silence.startSec));
-    const silenceEndSec = Math.max(silenceStartSec, Math.min(durationSec, silence.endSec));
-    if (silenceStartSec > cursor) {
-      speechRanges.push({
-        startSec: cursor,
-        endSec: silenceStartSec,
-      });
-    }
-    cursor = Math.max(cursor, silenceEndSec);
+    const ss = Math.max(0, Math.min(durationSec, silence.startSec));
+    const se = Math.max(ss, Math.min(durationSec, silence.endSec));
+    if (ss > cursor) speechRanges.push({ startSec: cursor, endSec: ss });
+    cursor = Math.max(cursor, se);
   }
-
-  if (cursor < durationSec) {
-    speechRanges.push({
-      startSec: cursor,
-      endSec: durationSec,
-    });
-  }
+  if (cursor < durationSec) speechRanges.push({ startSec: cursor, endSec: durationSec });
 
   const padded = speechRanges
-    .map(item => ({
-      startSec: Math.max(0, item.startSec - padSec),
-      endSec: Math.min(durationSec, item.endSec + padSec),
-    }))
-    .filter(item => item.endSec - item.startSec > 0.05);
+    .map(r => ({ startSec: Math.max(0, r.startSec - padSec), endSec: Math.min(durationSec, r.endSec + padSec) }))
+    .filter(r => r.endSec - r.startSec > 0.05);
 
   const merged = [];
-  for (const item of padded) {
-    const previous = merged[merged.length - 1];
-    if (!previous) {
-      merged.push({ ...item });
-      continue;
-    }
-
-    if (item.startSec - previous.endSec <= mergeGapSec) {
-      previous.endSec = Math.max(previous.endSec, item.endSec);
-      continue;
-    }
-
-    merged.push({ ...item });
+  for (const r of padded) {
+    const prev = merged[merged.length - 1];
+    if (prev && r.startSec - prev.endSec <= mergeGapSec) { prev.endSec = Math.max(prev.endSec, r.endSec); }
+    else merged.push({ ...r });
   }
 
-  return merged.map(item => ({
-    startSec: roundToMillis(startSec + item.startSec),
-    endSec: roundToMillis(startSec + item.endSec),
-    durationSec: roundToMillis(item.endSec - item.startSec),
+  return merged.map(r => ({
+    startSec: roundToMillis(startSec + r.startSec),
+    endSec: roundToMillis(startSec + r.endSec),
+    durationSec: roundToMillis(r.endSec - r.startSec),
   }));
 }
 
 function extractClip(manifest, atSec, preSec, postSec, outputPath) {
-  const startSec = Math.max(0, atSec - preSec);
-  const durationSec = Math.max(0.1, preSec + postSec);
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-
+  const hasAudio = !!manifest.media.audio;
   const args = [
-    '-y',
-    '-ss', String(startSec),
-    '-i', manifest.sourcePath,
-    '-t', String(durationSec),
-    '-map', '0:v:0?',
+    '-y', '-ss', String(Math.max(0, atSec - preSec)),
+    '-i', manifest.sourcePath, '-t', String(Math.max(0.1, preSec + postSec)),
+    '-map', '0:v:0?', ...(hasAudio ? ['-map', '0:a:0?'] : ['-an']),
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
+    ...(hasAudio ? ['-c:a', 'aac'] : []), outputPath,
   ];
-
-  if (manifest.media.audio) {
-    args.push('-map', '0:a:0?');
-  } else {
-    args.push('-an');
-  }
-
-  args.push('-c:v', 'libx264', '-pix_fmt', 'yuv420p');
-  if (manifest.media.audio) {
-    args.push('-c:a', 'aac');
-  }
-  args.push(outputPath);
-
   runProcess('ffmpeg', args);
 }
 
