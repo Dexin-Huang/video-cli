@@ -1,13 +1,23 @@
-# video-cli
+<p align="center">
+  <img src="assets/logo.png" alt="video-cli" width="120">
+</p>
 
-**Make a video feel like a codebase — searchable, inspectable, citeable.**
+<h1 align="center">video-cli</h1>
 
-One API key. Two cents per hour of video. Every answer grounded in timestamps.
+<p align="center">
+  <strong>Make a video feel like a codebase — searchable, inspectable, citeable.</strong>
+</p>
 
-[![Tests](https://github.com/Dexin-Huang/video-cli/actions/workflows/test.yml/badge.svg)](https://github.com/Dexin-Huang/video-cli/actions/workflows/test.yml)
-[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Node >= 22](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](https://nodejs.org)
-[![Zero Dependencies](https://img.shields.io/badge/dependencies-0-orange.svg)](package.json)
+<p align="center">
+  One API key. Two cents per hour of video. Every answer grounded in timestamps.
+</p>
+
+<p align="center">
+  <a href="https://github.com/Dexin-Huang/video-cli/actions/workflows/test.yml"><img src="https://github.com/Dexin-Huang/video-cli/actions/workflows/test.yml/badge.svg" alt="Tests"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg" alt="Node >= 22"></a>
+  <a href="package.json"><img src="https://img.shields.io/badge/dependencies-0-orange.svg" alt="Zero Dependencies"></a>
+</p>
 
 ## Quick Start
 
