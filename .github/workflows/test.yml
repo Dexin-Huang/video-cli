@@ -1,0 +1,18 @@
+name: Tests
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Run tests
+        run: npm test
+        env:
+          VIDEO_CLI_MOCK_GEMINI: '1'
+          VIDEO_CLI_MOCK_DEEPGRAM: '1'
+          VIDEO_CLI_MOCK_ELEVENLABS: '1'

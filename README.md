@@ -4,6 +4,7 @@
 
 One API key. Two cents per hour of video. Every answer grounded in timestamps.
 
+[![Tests](https://github.com/Dexin-Huang/video-cli/actions/workflows/test.yml/badge.svg)](https://github.com/Dexin-Huang/video-cli/actions/workflows/test.yml)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node >= 22](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](https://nodejs.org)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-0-orange.svg)](package.json)
