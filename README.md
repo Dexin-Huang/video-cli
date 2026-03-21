@@ -1,96 +1,92 @@
 # video-cli
 
-Local-first CLI that makes videos searchable and inspectable for AI agents. One API key (Gemini), ~$0.018/hour of video to set up, ~$0.0001/query.
+**Make a video feel like a codebase — searchable, inspectable, citeable.**
 
-Ingest a video, then ask questions with grounded citations -- or search, navigate chapters, extract frames and clips. All commands return JSON.
+One API key. Two cents per hour of video. Every answer grounded in timestamps.
+
+[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Node >= 22](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](https://nodejs.org)
+[![Zero Dependencies](https://img.shields.io/badge/dependencies-0-orange.svg)](package.json)
 
 ## Quick Start
 
 ```bash
-# one-time setup: ingest + transcribe + analyze + embed
-video-cli setup recording.mp4
-
-# ask a question
-video-cli ask <id> "what is the main argument?"
+cp .env.example .env           # add your GEMINI_API_KEY
+node video-cli.js setup video.mp4
+node video-cli.js ask <id> "what is the main argument?"
 ```
 
-Most agent sessions are 1-3 commands. `setup` then `ask` handles the 80% case.
+That's it. `setup` ingests, transcribes, OCRs, and embeds. `ask` returns a grounded answer with timestamps and citations. Most sessions are 1-3 commands.
 
-## Command Tiers
+## What It Does
 
-### Tier 1: Intent Commands
+```
+You have a video.  →  setup  →  Now it's searchable.
+                                 ask    "what happened at the end?"
+                                 search "pricing discussion"
+                                 context --at 3:45
+                                 chapters
+                                 frame --at 2:30
+                                 clip --at 2:30 --pre 5 --post 10
+```
 
-| Command | Purpose |
-|---------|---------|
-| `setup <file>` | Ingest + transcribe + analyze + embed in one step |
-| `ask <id> <question>` | Answer with grounded citations |
+Every command returns JSON. An AI agent can `setup` a meeting recording then `ask` questions about it — with cited timestamps, frame paths, and suggested follow-ups.
 
-### Tier 2: Navigation and Extraction
+## Commands
 
-| Command | Purpose |
-|---------|---------|
-| `search <id> <query>` | Semantic + lexical search |
-| `context <id> --at <sec>` | Everything around a timestamp |
-| `chapters <id>` | Segment into chapters |
-| `next <id> --from <sec>` | Next significant moment |
-| `grep <id> <text>` | Exact substring search (no embeddings) |
-| `frame <id> --at <sec>` | Extract a single frame as JPG |
-| `clip <id> --at <sec>` | Extract a short video clip |
+| Tier | Commands | What they do |
+|------|----------|-------------|
+| **Intent** | `setup`, `ask` | One-shot: ingest a video or answer a question |
+| **Navigate** | `search`, `context`, `chapters`, `next`, `grep` | Drill into specific moments |
+| **Extract** | `frame`, `clip` | Pull out frames or video clips |
+| **Pipeline** | `ingest`, `transcribe`, `analyze`, `embed` | Run pipeline steps individually |
+| **Inspect** | `list`, `status`, `inspect`, `brief`, `config` | Check what's available |
 
-### Tier 3: Pipeline and Inspection
+## How It Works
 
-| Command | Purpose |
-|---------|---------|
-| `ingest <file>` | Probe video, detect scenes, pick watchpoints |
-| `transcribe <id>` | Transcribe audio (Gemini, default) |
-| `ocr <id>` | OCR representative frames (Gemini flash-lite) |
-| `embed <id>` | Build embeddings from transcript + OCR + frames |
-| `describe <id>` | Dense frame descriptions (optional) |
-| `list` | List all ingested videos |
-| `inspect <id>` | Full manifest JSON |
-| `timeline <id>` | Watchpoints + scene change timestamps |
-| `watchpoints <id>` | Raw watchpoint data |
-| `bundle <id>` | Evidence bundle with frame paths |
-| `brief <id>` | Render evidence as Markdown |
-| `config` | Show runtime configuration |
+```
+video.mp4
+  → ffmpeg scene detection (free, local)
+  → Gemini transcription ($0.0002/min)
+  → Gemini OCR + frame descriptions ($0.003)
+  → Gemini embeddings ($0.0002)
+  → searchable JSON artifacts on disk
+
+query
+  → semantic + lexical + description search (local, instant)
+  → Gemini synthesizes answer ($0.0001)
+  → { answer, citations[], suggestedFollowUps[], framePaths[] }
+```
+
+## Cost
+
+| Video length | Setup cost | Per query |
+|---|---|---|
+| 5 min | $0.002 | $0.0001 |
+| 1 hour | $0.018 | $0.0001 |
+| 10 hours | $0.18 | $0.0001 |
+
+One API key (`GEMINI_API_KEY`) powers everything. Optionally swap in ElevenLabs or Deepgram for transcription via `--provider`.
 
 ## Requirements
 
 - Node >= 22
 - `ffmpeg` and `ffprobe`
-- API key: `GEMINI_API_KEY` in `.env` (powers transcription, OCR, embeddings, and ask)
-- Optional overrides: `ELEVENLABS_API_KEY` or `DEEPGRAM_API_KEY` for `--provider elevenlabs` / `--provider deepgram`
+- `GEMINI_API_KEY` in `.env`
 
-## Installation
+## For AI Agents
 
-```bash
-cp .env.example .env
-# fill in API keys
-node video-cli.js setup ./sample.mp4
-```
+See **[SKILL.md](SKILL.md)** — the complete agent-facing reference with output shapes, flags, and session examples.
 
-## Agent Integration
-
-See [SKILL.md](SKILL.md) for the complete agent-facing reference: all commands, output shapes, flags, and session examples.
-
-## Tests and Evals
+## Development
 
 ```bash
-npm test              # black-box CLI tests
-npm run eval          # deterministic retrieval evals
-npm run eval:json     # JSON output for agent loops
-npm run goldens:check # golden-set scaffold
+npm test              # 16 tests, no API calls
+npm run eval          # retrieval quality eval
 ```
 
-The eval harness uses synthetic local fixtures. It does not call any external APIs.
+Zero npm dependencies. Pure Node.js + ffmpeg.
 
-## Repo Layout
+## License
 
-- `src/cli.js` -- thin dispatcher + arg parsing
-- `src/commands/` -- command handlers (setup, ask, search, media, pipeline, inspect, eval)
-- `src/lib/` -- storage, media, providers, search, embeddings, ask
-- `tests/` -- black-box CLI tests
-- `evals/` -- deterministic regression evals for retrieval
-- `goldens/` -- planned mixed 15-video golden set
-- `docs/` -- architecture notes
-- `SKILL.md` -- agent-facing command reference
+[MIT](LICENSE)
