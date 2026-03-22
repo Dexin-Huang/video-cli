@@ -1,4 +1,4 @@
-﻿# Changelog
+# Changelog
 
 All notable changes to this project will be documented in this file.
 
@@ -7,6 +7,11 @@ The format is based on Keep a Changelog, and this project aims to follow Semanti
 ## [Unreleased]
 
 - Ongoing polish and maintenance.
+
+## [0.3.1] - 2026-03-22
+
+### Fixed
+- Restored the packed-install smoke test so CI validates the published tarball, install path, and basic CLI commands.
 
 ## [0.3.0] - 2026-03-22
 
@@ -44,3 +49,4 @@ The format is based on Keep a Changelog, and this project aims to follow Semanti
 - Moved to a Gemini-first default path for OCR, transcription, and embeddings.
 - Parallelized the setup pipeline and improved scene detection/watchpoint selection.
 - Reduced codebase complexity while keeping the command surface intact.
+

@@ -1,7 +1,7 @@
 {
   "name": "video-cli",
-  "version": "0.3.0",
-  "description": "Local-first video REPL for AI agents — search, ask, navigate, extract",
+  "version": "0.3.1",
+  "description": "Local-first video REPL for AI agents - search, ask, navigate, extract",
   "license": "MIT",
   "type": "commonjs",
   "bin": {
@@ -37,6 +37,7 @@
   },
   "scripts": {
     "test": "node --test --experimental-test-isolation=none",
+    "smoke:pack": "node scripts/smoke-packed-install.js",
     "eval": "node evals/run.js",
     "eval:json": "node evals/run.js --json"
   }
