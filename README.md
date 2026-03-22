@@ -193,10 +193,8 @@ See [SKILL.md](SKILL.md) for the agent-facing command reference and output shape
 ## Development
 
 ```bash
-npm test                 # unit + contract + integration tests with mocked APIs
-npm run smoke:pack       # pack tarball, install it locally, run CLI smoke checks
-npm run goldens:check    # validate eval/golden metadata
-npm run skills:check     # verify installable skill doc sync
+npm test       # test suite
+npm run eval   # retrieval quality eval
 ```
 
 Zero npm dependencies. Pure Node.js plus `ffmpeg`.

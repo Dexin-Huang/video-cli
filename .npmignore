@@ -3,7 +3,6 @@ data/
 reference/
 research/
 evals/
-goldens/
 tests/
 docs/
 .env

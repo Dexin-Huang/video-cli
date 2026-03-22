@@ -1,7 +1,6 @@
 # Data & artifacts
 data/
 evals/results/
-goldens/results/
 
 # Temp directories
 .tmp_*/

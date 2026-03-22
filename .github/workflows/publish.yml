@@ -13,8 +13,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+          # Do NOT set registry-url — it writes .npmrc with token placeholder that blocks OIDC
       - name: Install ffmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Update npm (OIDC requires npm >= 11.5.1, Node 22 ships npm 10.x)
+        run: npm install -g npm@latest && npm --version
+      - name: Clear auth token placeholders
+        run: rm -f .npmrc ~/.npmrc
       - name: Run tests
         run: npm test
         env:
