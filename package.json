@@ -1,6 +1,6 @@
 {
   "name": "video-cli",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Local-first video REPL for AI agents — search, ask, navigate, extract",
   "license": "MIT",
   "type": "commonjs",
