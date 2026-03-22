@@ -1,4 +1,4 @@
-{
+﻿{
   "preset": "balanced",
   "ocr": {
     "provider": "gemini",
@@ -16,7 +16,9 @@
     "diarize": true,
     "utterances": true,
     "smartFormat": true,
-    "punctuate": true
+    "punctuate": true,
+    "detectLanguage": false,
+    "language": null
   },
   "embed": {
     "provider": "gemini",

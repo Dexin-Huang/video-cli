@@ -1,4 +1,4 @@
-name: Tests
+﻿name: Tests
 on: [push, pull_request]
 concurrency:
   group: video-cli-tests-${{ github.ref }}
@@ -43,3 +43,9 @@ jobs:
           VIDEO_CLI_MOCK_GEMINI: '1'
           VIDEO_CLI_MOCK_DEEPGRAM: '1'
           VIDEO_CLI_MOCK_ELEVENLABS: '1'
+      - name: Run packed install smoke test (Unix)
+        if: matrix.os != 'windows-latest'
+        run: npm run smoke:pack
+      - name: Run packed install smoke test (Windows)
+        if: matrix.os == 'windows-latest'
+        run: npm.cmd run smoke:pack

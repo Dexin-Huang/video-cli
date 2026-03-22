@@ -1,15 +1,15 @@
-<p align="center">
+﻿<p align="center">
   <img src="assets/logo.png" alt="video-cli" width="120">
 </p>
 
 <h1 align="center">video-cli</h1>
 
 <p align="center">
-  <strong>Make a video behave like a codebase: searchable, inspectable, citeable.</strong>
+  <strong>Make a video behave like a codebase: searchable, inspectable, citable.</strong>
 </p>
 
 <p align="center">
-  Video is opaque to most tools. `video-cli` turns it into local artifacts an agent can query with evidence.
+  Video is opaque to most tools. <code>video-cli</code> turns it into local artifacts an agent can query with evidence.
 </p>
 
 <p align="center">
@@ -106,15 +106,85 @@ query
 
 ## Configuration
 
-`video-cli` reads `video-cli.config.json` in the repo root and merges it with `video-cli.config.example.json`, plus environment overrides. The main knobs are provider selection, transcription chunking, OCR model choice, and embedding dimensions.
+`video-cli` starts from a built-in preset, then resolves runtime config in this order:
 
-Use `video-cli config` to see the resolved runtime config. Use `GEMINI_API_KEY` for the default path, and override providers with `--provider` or env vars when needed.
+1. Built-in preset defaults
+2. `video-cli.config.json` in the repo root
+3. Environment variable overrides
+4. Command flags for commands that expose them
+
+Use `video-cli config` to inspect the final merged config that the CLI will actually use.
+
+A typical `video-cli.config.json` looks like this:
+
+```json
+{
+  "preset": "balanced",
+  "ocr": {
+    "provider": "gemini",
+    "model": "gemini-3.1-flash-lite-preview",
+    "watchpointLimit": 8
+  },
+  "transcribe": {
+    "provider": "gemini-transcribe",
+    "model": "gemini-3.1-flash-lite-preview",
+    "chunkSeconds": 480,
+    "trimSilence": false,
+    "minSilenceSec": 1.5,
+    "padSec": 0.25,
+    "silenceNoiseDb": -35,
+    "diarize": true,
+    "utterances": true,
+    "smartFormat": true,
+    "punctuate": true,
+    "detectLanguage": false,
+    "language": null
+  },
+  "embed": {
+    "provider": "gemini",
+    "model": "gemini-embedding-2-preview",
+    "dimensions": 768,
+    "sources": {
+      "transcript": true,
+      "ocr": true,
+      "frames": false
+    }
+  }
+}
+```
+
+Common environment overrides:
+
+- `VIDEO_CLI_PRESET`: choose the base preset before file/env overrides are merged
+- `VIDEO_CLI_OCR_PROVIDER`, `VIDEO_CLI_OCR_MODEL`: change OCR provider/model
+- `VIDEO_CLI_TRANSCRIBE_PROVIDER`, `VIDEO_CLI_TRANSCRIBE_MODEL`: change transcription provider/model
+- `VIDEO_CLI_TRANSCRIBE_CHUNK_SECONDS`: change transcription chunk size
+- `VIDEO_CLI_TRANSCRIBE_TRIM_SILENCE`, `VIDEO_CLI_TRANSCRIBE_MIN_SILENCE_SEC`, `VIDEO_CLI_TRANSCRIBE_PAD_SEC`: control silence trimming
+- `VIDEO_CLI_EMBED_PROVIDER`, `VIDEO_CLI_EMBED_MODEL`, `VIDEO_CLI_EMBED_DIMENSIONS`: change embedding provider/model/dimensions
+- `VIDEO_CLI_EMBED_TRANSCRIPT`, `VIDEO_CLI_EMBED_OCR`, `VIDEO_CLI_EMBED_FRAMES`: turn embedding sources on or off
+- `VIDEO_CLI_DATA_ROOT`: move the artifact store away from the default `data/videos`
+- `VIDEO_CLI_ID`: provide a default `<video-id>` for commands that normally take one as the first positional argument
+
+Provider-specific model aliases are also accepted where relevant, including `GEMINI_OCR_MODEL`, `GEMINI_TRANSCRIBE_MODEL`, and `DEEPGRAM_TRANSCRIBE_MODEL`.
 
 ## Requirements
 
 - Node 22 or newer
 - `ffmpeg` and `ffprobe`
-- `GEMINI_API_KEY` in `.env`
+- `GEMINI_API_KEY` in `.env` for the default path
+
+## Troubleshooting
+
+- `ffmpeg not found` or `ffprobe not found`
+  Install `ffmpeg` and make sure both binaries are on `PATH`. The CLI shells out to them directly for probing, frame extraction, clip extraction, and silence detection.
+- `No embeddings found` or `No transcript/ocr found`
+  Run `video-cli setup <file>` for the normal path, or run the missing pipeline stage directly and re-check with `video-cli status <video-id>`.
+- `Unknown video id`
+  Run `video-cli list` to see available artifacts, or set `VIDEO_CLI_ID` if you want a default active video.
+- PowerShell blocks `npm`
+  On some Windows setups, PowerShell execution policy blocks `npm.ps1`. Use `npm.cmd ...` instead.
+- Restricted sandboxes fail on child processes
+  The CLI depends on subprocesses for `ffmpeg` and `ffprobe`. Some sandboxes block nested process execution; that is an environment limit, not a `video-cli` bug.
 
 ## For AI Agents
 
@@ -123,11 +193,13 @@ See [SKILL.md](SKILL.md) for the agent-facing command reference and output shape
 ## Development
 
 ```bash
-npm test              # 20 tests, no API calls
-npm run eval          # retrieval quality eval
+npm test                 # unit + contract + integration tests with mocked APIs
+npm run smoke:pack       # pack tarball, install it locally, run CLI smoke checks
+npm run goldens:check    # validate eval/golden metadata
+npm run skills:check     # verify installable skill doc sync
 ```
 
-Zero npm dependencies. Pure Node.js + ffmpeg.
+Zero npm dependencies. Pure Node.js plus `ffmpeg`.
 
 ## License
 
