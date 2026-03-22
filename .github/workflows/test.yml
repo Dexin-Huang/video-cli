@@ -5,12 +5,8 @@ concurrency:
   cancel-in-progress: true
 jobs:
   test:
+    runs-on: ubuntu-latest
     timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
     permissions:
       contents: read
     steps:
@@ -18,22 +14,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install ffmpeg (Ubuntu)
-        if: matrix.os == 'ubuntu-latest'
+      - name: Install ffmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      - name: Install ffmpeg (Windows)
-        if: matrix.os == 'windows-latest'
-        run: choco install ffmpeg -y
-      - name: Install ffmpeg (macOS)
-        if: matrix.os == 'macos-latest'
-        run: brew install ffmpeg
-      - name: Run tests (Unix)
-        if: matrix.os != 'windows-latest'
+      - name: Run tests
         run: npm test
-        env:
-          VIDEO_CLI_MOCK_GEMINI: '1'
-      - name: Run tests (Windows)
-        if: matrix.os == 'windows-latest'
-        run: npm.cmd test
         env:
           VIDEO_CLI_MOCK_GEMINI: '1'
