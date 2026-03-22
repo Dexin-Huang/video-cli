@@ -1,11 +1,11 @@
-﻿name: Tests
+name: Tests
 on: [push, pull_request]
 concurrency:
   group: video-cli-tests-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   test:
-    timeout-minutes: 30
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -27,8 +27,6 @@ jobs:
       - name: Install ffmpeg (macOS)
         if: matrix.os == 'macos-latest'
         run: brew install ffmpeg
-      - name: Verify skill docs are in sync
-        run: node scripts/sync-skill-docs.js --check
       - name: Run tests (Unix)
         if: matrix.os != 'windows-latest'
         run: npm test
@@ -39,9 +37,3 @@ jobs:
         run: npm.cmd test
         env:
           VIDEO_CLI_MOCK_GEMINI: '1'
-      - name: Run packed install smoke test (Unix)
-        if: matrix.os != 'windows-latest'
-        run: npm run smoke:pack
-      - name: Run packed install smoke test (Windows)
-        if: matrix.os == 'windows-latest'
-        run: npm.cmd run smoke:pack

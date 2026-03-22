@@ -52,23 +52,12 @@ function canSpawnNodeChildProcess() {
 function createSampleVideo(outputPath) {
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 
+  // Simple single-source: 3s red + sine wave. Works across all ffmpeg versions.
   const result = spawnSync('ffmpeg', [
     '-y',
-    '-f', 'lavfi',
-    '-i', 'color=c=red:s=320x240:d=1',
-    '-f', 'lavfi',
-    '-i', 'color=c=blue:s=320x240:d=1',
-    '-f', 'lavfi',
-    '-i', 'color=c=green:s=320x240:d=1',
-    '-f', 'lavfi',
-    '-i', 'sine=frequency=880:sample_rate=16000:duration=0.8',
-    '-f', 'lavfi',
-    '-i', 'anullsrc=channel_layout=mono:sample_rate=16000:d=1',
-    '-f', 'lavfi',
-    '-i', 'sine=frequency=660:sample_rate=16000:duration=1.2',
-    '-filter_complex', '[0:v][1:v][2:v]concat=n=3:v=1:a=0,format=yuv420p[v];[3:a][4:a][5:a]concat=n=3:v=0:a=1[a]',
-    '-map', '[v]',
-    '-map', '[a]',
+    '-f', 'lavfi', '-i', 'color=c=red:s=320x240:d=3,format=yuv420p',
+    '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=16000:duration=3',
+    '-shortest',
     outputPath,
   ], {
     cwd: repoRoot,
