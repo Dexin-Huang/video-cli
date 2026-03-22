@@ -34,15 +34,11 @@ jobs:
         run: npm test
         env:
           VIDEO_CLI_MOCK_GEMINI: '1'
-          VIDEO_CLI_MOCK_DEEPGRAM: '1'
-          VIDEO_CLI_MOCK_ELEVENLABS: '1'
       - name: Run tests (Windows)
         if: matrix.os == 'windows-latest'
         run: npm.cmd test
         env:
           VIDEO_CLI_MOCK_GEMINI: '1'
-          VIDEO_CLI_MOCK_DEEPGRAM: '1'
-          VIDEO_CLI_MOCK_ELEVENLABS: '1'
       - name: Run packed install smoke test (Unix)
         if: matrix.os != 'windows-latest'
         run: npm run smoke:pack

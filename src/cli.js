@@ -20,7 +20,7 @@ const COMMAND_HELP = {
   frame: 'video-cli frame <video-id> --at <seconds> [--output <path>]\n\nExtract a single frame as JPG at the given timestamp.\nAlias: --out <path>.',
   clip: 'video-cli clip <video-id> --at <seconds> [--pre N] [--post N] [--duration N] [--output <path>]\n\nExtract a video clip centered on the given timestamp.\nUse --duration as shorthand for a symmetric clip around --at.\nAlias: --out <path>.',
   ingest: 'video-cli ingest <file>\n\nProbe video metadata and extract adaptive watchpoint frames.\nFirst step of the pipeline - run before transcribe/analyze.\n\nFlags:\n  --adaptive         Adaptive watchpoint selection (default: true)\n  --watchpoints N    Max watchpoints (default: auto)\n  --scene-threshold  Scene detection threshold (default: 0.35)',
-  transcribe: 'video-cli transcribe <video-id>\n\nTranscribe audio track using ElevenLabs or Gemini.\nProduces word-level timestamps.',
+  transcribe: 'video-cli transcribe <video-id>\n\nTranscribe audio track using Gemini.\nProduces utterances and word-level timestamps.',
   ocr: 'video-cli ocr <video-id>\n\nExtract on-screen text from representative watchpoint frames.',
   analyze: 'video-cli analyze <video-id>\n\nRun OCR + frame description in one pass via Gemini.\nProduces per-frame OCR text and visual descriptions.',
   embed: 'video-cli embed <video-id>\n\nBuild text embeddings for transcript and OCR segments.\nRequired for semantic search.',

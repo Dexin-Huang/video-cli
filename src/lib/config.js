@@ -3,7 +3,6 @@ const path = require('node:path');
 
 const BUILTIN_PRESETS = {
   // Golden path: Gemini for everything. One API key, one provider.
-  // Override with --provider elevenlabs for word-level timestamps + audio events.
   balanced: {
     preset: 'balanced',
     ocr: {
@@ -71,7 +70,7 @@ function getRuntimeConfig(repoRoot) {
   str(merged.ocr, 'provider', 'VIDEO_CLI_OCR_PROVIDER');
   str(merged.ocr, 'model', 'VIDEO_CLI_OCR_MODEL', 'GEMINI_OCR_MODEL');
   str(merged.transcribe, 'provider', 'VIDEO_CLI_TRANSCRIBE_PROVIDER');
-  str(merged.transcribe, 'model', 'VIDEO_CLI_TRANSCRIBE_MODEL', 'DEEPGRAM_TRANSCRIBE_MODEL', 'GEMINI_TRANSCRIBE_MODEL');
+  str(merged.transcribe, 'model', 'VIDEO_CLI_TRANSCRIBE_MODEL', 'GEMINI_TRANSCRIBE_MODEL');
   num(merged.transcribe, 'chunkSeconds', 'VIDEO_CLI_TRANSCRIBE_CHUNK_SECONDS');
   bool(merged.transcribe, 'trimSilence', 'VIDEO_CLI_TRANSCRIBE_TRIM_SILENCE');
   num(merged.transcribe, 'minSilenceSec', 'VIDEO_CLI_TRANSCRIBE_MIN_SILENCE_SEC');

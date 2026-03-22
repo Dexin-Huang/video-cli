@@ -88,7 +88,7 @@ test('ingest, list, inspect, frame, and clip work end to end', { skip: !canSpawn
   assert.equal(transcript.items[0].skippedSilenceSec > 0.9, true);
   assert.equal(transcript.items[0].words.length >= 4, true);
   assert.equal(transcript.items[0].utterances.length, 2);
-  assert.match(transcript.items[0].text, /mock (deepgram|elevenlabs|gemini) transcript/);
+  assert.match(transcript.items[0].text, /mock gemini transcript/);
   assert.equal(transcript.items[0].words[1].startSec > transcript.items[0].words[0].startSec, true);
 
   const analyze = runCli(['analyze', ingest.id, '--limit', '2']);
@@ -128,8 +128,6 @@ function runCli(args) {
     env: {
       VIDEO_CLI_DATA_ROOT: dataRoot,
       VIDEO_CLI_MOCK_GEMINI: '1',
-      VIDEO_CLI_MOCK_DEEPGRAM: '1',
-      VIDEO_CLI_MOCK_ELEVENLABS: '1',
     },
   });
 }

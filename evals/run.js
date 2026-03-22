@@ -24,7 +24,6 @@ function main() {
 
   if (mode === 'mock') {
     env.VIDEO_CLI_MOCK_GEMINI = '1';
-    env.VIDEO_CLI_MOCK_DEEPGRAM = '1';
   }
 
   const checks = [];
@@ -32,7 +31,7 @@ function main() {
   addCheck(checks, 'default preset loads', config.preset === 'balanced', {
     preset: config.preset,
   });
-  addCheck(checks, 'default providers are wired', config.ocr.provider === 'gemini' && config.transcribe.provider === 'deepgram', {
+  addCheck(checks, 'default providers are wired', config.ocr.provider === 'gemini' && config.transcribe.provider === 'gemini-transcribe', {
     ocrProvider: config.ocr.provider,
     transcribeProvider: config.transcribe.provider,
   });
@@ -145,7 +144,7 @@ function createMockScenario() {
     padSec: 0,
     minUtterances: 2,
     minWords: 4,
-    transcriptPattern: /mock deepgram transcript/i,
+    transcriptPattern: /mock gemini transcript/i,
     grepQuery: 'mock',
     minGrepMatches: 1,
     maxMatchWindowSec: 5,
@@ -162,7 +161,7 @@ function createLiveScenario() {
   const videoPath = path.join(tmpRoot, 'live-sample.mp4');
 
   runPowerShell("Add-Type -AssemblyName System.Speech; $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer; $synth.SetOutputToWaveFile('" + speechPath + "'); $synth.Speak('Hello from video cli. This is a real transcription test.'); $synth.Dispose()");
-  runPowerShell("Add-Type -AssemblyName System.Drawing; $bmp = New-Object System.Drawing.Bitmap 1280,720; $g = [System.Drawing.Graphics]::FromImage($bmp); $g.Clear([System.Drawing.Color]::FromArgb(245,244,238)); $font1 = New-Object System.Drawing.Font('Arial', 42, [System.Drawing.FontStyle]::Bold); $font2 = New-Object System.Drawing.Font('Arial', 26); $brush = [System.Drawing.Brushes]::Black; $g.DrawString('VIDEO CLI LIVE TEST', $font1, $brush, 80, 180); $g.DrawString('Gemini OCR should read this frame.', $font2, $brush, 80, 280); $g.DrawString('Deepgram should transcribe the audio track.', $font2, $brush, 80, 330); $bmp.Save('" + framePath + "', [System.Drawing.Imaging.ImageFormat]::Png); $g.Dispose(); $bmp.Dispose();");
+  runPowerShell("Add-Type -AssemblyName System.Drawing; $bmp = New-Object System.Drawing.Bitmap 1280,720; $g = [System.Drawing.Graphics]::FromImage($bmp); $g.Clear([System.Drawing.Color]::FromArgb(245,244,238)); $font1 = New-Object System.Drawing.Font('Arial', 42, [System.Drawing.FontStyle]::Bold); $font2 = New-Object System.Drawing.Font('Arial', 26); $brush = [System.Drawing.Brushes]::Black; $g.DrawString('VIDEO CLI LIVE TEST', $font1, $brush, 80, 180); $g.DrawString('Gemini OCR should read this frame.', $font2, $brush, 80, 280); $g.DrawString('Gemini should transcribe the audio track.', $font2, $brush, 80, 330); $bmp.Save('" + framePath + "', [System.Drawing.Imaging.ImageFormat]::Png); $g.Dispose(); $bmp.Dispose();");
 
   runProcess('ffmpeg', [
     '-y',

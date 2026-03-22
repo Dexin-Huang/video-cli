@@ -1,10 +1,8 @@
 data/
 .tmp_*/
 reference/
-research/
 evals/
 tests/
-docs/
 .env
 .claude/
 .codex/

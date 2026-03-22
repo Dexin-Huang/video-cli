@@ -20,7 +20,7 @@ function createGeminiTranscribeProvider() {
     },
 
     async transcribeAudio({ audioPath, model }) {
-      // Always use a Gemini model, ignore ElevenLabs/Deepgram model names from config
+      // Always use a Gemini model, ignore non-Gemini model names from config
       const useModel = (model && model.startsWith('gemini')) ? model : DEFAULT_MODEL;
       const audioData = fs.readFileSync(audioPath).toString('base64');
 

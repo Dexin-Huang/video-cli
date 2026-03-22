@@ -82,6 +82,7 @@ video-cli clip lec-abc123 --at 198 --pre 5 --post 10
 
 | Area | Commands | Purpose |
 |------|----------|---------|
+| **Setup** | `init`, `install --skills`, `cleanup` | Configure API key, install agent skill, remove artifacts |
 | **Intent** | `setup`, `ask` | Ingest a video or answer a question with evidence |
 | **Navigate** | `search`, `context`, `chapters`, `next`, `grep` | Find and inspect specific moments |
 | **Extract** | `frame`, `clip` | Pull out a still image or short clip |
@@ -165,7 +166,7 @@ Common environment overrides:
 - `VIDEO_CLI_DATA_ROOT`: move the artifact store away from the default `data/videos`
 - `VIDEO_CLI_ID`: provide a default `<video-id>` for commands that normally take one as the first positional argument
 
-Provider-specific model aliases are also accepted where relevant, including `GEMINI_OCR_MODEL`, `GEMINI_TRANSCRIBE_MODEL`, and `DEEPGRAM_TRANSCRIBE_MODEL`.
+Provider-specific model aliases are also accepted where relevant, including `GEMINI_OCR_MODEL` and `GEMINI_TRANSCRIBE_MODEL`.
 
 ## Requirements
 

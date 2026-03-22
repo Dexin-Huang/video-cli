@@ -28,14 +28,10 @@ function createProvider(name) {
   switch (name) {
     case 'gemini':
       return require('../lib/gemini').createGeminiProvider();
-    case 'elevenlabs':
-      return require('../lib/elevenlabs').createElevenLabsProvider();
-    case 'deepgram':
-      return require('../lib/deepgram').createDeepgramProvider();
     case 'gemini-transcribe':
       return require('../lib/gemini-transcribe').createGeminiTranscribeProvider();
     default:
-      throw new Error(`Provider "${name}" is not implemented yet. Supported providers: gemini, elevenlabs, deepgram, gemini-transcribe.`);
+      throw new Error(`Provider "${name}" is not implemented yet. Supported providers: gemini, gemini-transcribe.`);
   }
 }
 
