@@ -1,0 +1,19 @@
+﻿{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://video-cli.local/schemas/cli/setup.schema.json",
+  "title": "video-cli setup output",
+  "type": "object",
+  "required": ["id", "sourceName", "durationSec", "watchpoints", "utterances", "ocrItems", "descriptions", "embeddings", "ready"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "sourceName": { "type": "string", "minLength": 1 },
+    "durationSec": { "type": "number", "minimum": 0 },
+    "watchpoints": { "type": "number", "minimum": 1 },
+    "utterances": { "type": "number", "minimum": 0 },
+    "ocrItems": { "type": "number", "minimum": 0 },
+    "descriptions": { "type": "number", "minimum": 0 },
+    "embeddings": { "type": "number", "minimum": 0 },
+    "ready": { "type": "boolean" }
+  },
+  "additionalProperties": false
+}

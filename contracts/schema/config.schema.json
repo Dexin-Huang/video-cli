@@ -1,0 +1,63 @@
+﻿{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://video-cli.local/schemas/cli/config.schema.json",
+  "title": "video-cli config output",
+  "type": "object",
+  "required": ["preset", "ocr", "transcribe", "embed"],
+  "properties": {
+    "preset": { "type": "string", "minLength": 1 },
+    "ocr": {
+      "type": "object",
+      "required": ["provider", "model", "watchpointLimit"],
+      "properties": {
+        "provider": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "watchpointLimit": { "type": "number", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "transcribe": {
+      "type": "object",
+      "required": ["provider", "model", "chunkSeconds", "trimSilence", "minSilenceSec", "padSec", "silenceNoiseDb", "diarize", "utterances", "smartFormat", "punctuate", "detectLanguage", "language"],
+      "properties": {
+        "provider": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "chunkSeconds": { "type": "number", "minimum": 1 },
+        "trimSilence": { "type": "boolean" },
+        "minSilenceSec": { "type": "number", "minimum": 0 },
+        "padSec": { "type": "number", "minimum": 0 },
+        "silenceNoiseDb": { "type": "number" },
+        "diarize": { "type": "boolean" },
+        "utterances": { "type": "boolean" },
+        "smartFormat": { "type": "boolean" },
+        "punctuate": { "type": "boolean" },
+        "detectLanguage": { "type": "boolean" },
+        "language": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "embed": {
+      "type": "object",
+      "required": ["provider", "model", "dimensions", "taskTypeDocument", "taskTypeQuery", "sources"],
+      "properties": {
+        "provider": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "dimensions": { "type": "number", "minimum": 1 },
+        "taskTypeDocument": { "type": "string", "minLength": 1 },
+        "taskTypeQuery": { "type": "string", "minLength": 1 },
+        "sources": {
+          "type": "object",
+          "required": ["transcript", "ocr", "frames"],
+          "properties": {
+            "transcript": { "type": "boolean" },
+            "ocr": { "type": "boolean" },
+            "frames": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

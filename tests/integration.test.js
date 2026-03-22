@@ -1,11 +1,14 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const {
+  canSpawnNodeChildProcess,
+  createSampleVideo,
+  repoRoot,
+  runCliJson,
+} = require('./helpers/cli-test-helpers');
 
-const repoRoot = path.resolve(__dirname, '..');
-const cliPath = path.join(repoRoot, 'video-cli.js');
 const tmpRoot = path.join(repoRoot, '.tmp_cli_test');
 const dataRoot = path.join(tmpRoot, 'data', 'videos');
 const canSpawnChildren = canSpawnNodeChildProcess();
@@ -121,62 +124,12 @@ test('ingest, list, inspect, frame, and clip work end to end', { skip: !canSpawn
 });
 
 function runCli(args) {
-  const result = spawnSync(process.execPath, [cliPath, ...args], {
-    cwd: repoRoot,
-    encoding: 'utf8',
-    windowsHide: true,
+  return runCliJson(args, {
     env: {
-      ...process.env,
       VIDEO_CLI_DATA_ROOT: dataRoot,
       VIDEO_CLI_MOCK_GEMINI: '1',
       VIDEO_CLI_MOCK_DEEPGRAM: '1',
       VIDEO_CLI_MOCK_ELEVENLABS: '1',
     },
   });
-
-  if (result.status !== 0) {
-    throw new Error(result.stderr || result.stdout || `CLI failed with code ${result.status}`);
-  }
-
-  return JSON.parse(result.stdout);
-}
-
-function canSpawnNodeChildProcess() {
-  const result = spawnSync(process.execPath, ['-e', 'process.exit(0)'], {
-    cwd: repoRoot,
-    encoding: 'utf8',
-    windowsHide: true,
-  });
-
-  return !result.error && result.status === 0;
-}
-
-function createSampleVideo(outputPath) {
-  const result = spawnSync('ffmpeg', [
-    '-y',
-    '-f', 'lavfi',
-    '-i', 'color=c=red:s=320x240:d=1',
-    '-f', 'lavfi',
-    '-i', 'color=c=blue:s=320x240:d=1',
-    '-f', 'lavfi',
-    '-i', 'color=c=green:s=320x240:d=1',
-    '-f', 'lavfi',
-    '-i', 'sine=frequency=880:sample_rate=16000:duration=0.8',
-    '-f', 'lavfi',
-    '-i', 'anullsrc=channel_layout=mono:sample_rate=16000:d=1',
-    '-f', 'lavfi',
-    '-i', 'sine=frequency=660:sample_rate=16000:duration=1.2',
-    '-filter_complex', '[0:v][1:v][2:v]concat=n=3:v=1:a=0,format=yuv420p[v];[3:a][4:a][5:a]concat=n=3:v=0:a=1[a]',
-    '-map', '[v]',
-    '-map', '[a]',
-    outputPath,
-  ], {
-    cwd: repoRoot,
-    encoding: 'utf8',
-    windowsHide: true,
-  });
-
-  if (result.status !== 0) {
-    throw new Error(result.stderr || result.stdout || 'Failed to create sample video');
-  }
 }
