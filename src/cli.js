@@ -61,6 +61,7 @@ async function main(argv) {
   const helpers = { requirePositional, parseNumberFlag, parseBooleanFlag, printJson };
 
   if (command === 'init') return runInit();
+  if (command === 'cleanup') return runCleanup(positionals, flags);
   if (command === 'ingest') return runIngest(positionals, flags, helpers);
 
   const commands = {
@@ -83,6 +84,7 @@ function printHelp() {
     '',
     'Quick Start:',
     '  init                            Set up API key (interactive, secure)',
+    '  cleanup [video-id] [--all]      Remove artifacts, data, or everything',
     '  setup <file>                    Full pipeline: ingest + transcribe + analyze + embed',
     '  ask <video-id> <question>       Answer with grounded citations',
     '',
@@ -184,6 +186,51 @@ function parseBooleanFlag(flags, name, fallback) {
   }
 
   throw new Error(`Invalid boolean value for --${name}: ${flags[name]}`);
+}
+
+async function runCleanup(positionals, flags) {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { getDataRoot } = require('./lib/store');
+
+  const all = flags.all || flags.a;
+  const videoId = positionals[0];
+
+  if (videoId) {
+    // Remove a single video's artifacts
+    const videoDir = path.join(getDataRoot(), videoId);
+    if (!fs.existsSync(videoDir)) {
+      console.error(`No data found for video: ${videoId}`);
+      process.exit(1);
+    }
+    fs.rmSync(videoDir, { recursive: true, force: true });
+    console.error(`Removed: ${videoDir}`);
+    return;
+  }
+
+  if (all) {
+    // Remove everything: data, .env, config
+    const dataRoot = getDataRoot();
+    if (fs.existsSync(dataRoot)) {
+      fs.rmSync(dataRoot, { recursive: true, force: true });
+      console.error(`Removed: ${dataRoot}`);
+    }
+
+    const envPath = path.join(getRepoRoot(), '.env');
+    if (fs.existsSync(envPath)) {
+      fs.unlinkSync(envPath);
+      console.error(`Removed: ${envPath}`);
+    }
+
+    console.error('');
+    console.error('All data and credentials removed.');
+    console.error('Run "video-cli init" to set up again.');
+    return;
+  }
+
+  console.error('Usage:');
+  console.error('  video-cli cleanup <video-id>   Remove one video\'s artifacts');
+  console.error('  video-cli cleanup --all        Remove all data + API key');
 }
 
 function printJson(value) {
