@@ -11,20 +11,31 @@ const { runEvalGenerate, runEvalRun } = require('./commands/eval');
 
 const COMMAND_HELP = {
   setup: 'video-cli setup <file>\n\nRun the full pipeline: ingest + transcribe + analyze + embed.\nCreates all artifacts needed for search and ask.\n\nFlags:\n  --adaptive         Adaptive watchpoint selection (default: true)\n  --watchpoints N    Max watchpoints (default: auto)\n  --scene-threshold  Scene detection threshold (default: 0.35)',
-  ask: 'video-cli ask <video-id> <question>\n\nAnswer a question with grounded citations.\nInternally: search → context → synthesize via Gemini Flash-Lite.\n\nReturns: answer, citations with timestamps, suggested follow-ups, frame paths.',
+  ask: 'video-cli ask <video-id> <question>\n\nAnswer a question with grounded citations.\nInternally: search -> context -> synthesize via Gemini Flash-Lite.\n\nReturns: answer, citations with timestamps, suggested follow-ups, frame paths.',
   search: 'video-cli search <video-id> <query> [--top N]\n\nSemantic + lexical + description search.\nReturns ranked matches with scores and timestamps.',
   context: 'video-cli context <video-id> --at <seconds> [--window N] [--no-enrich]\n\nEverything around a timestamp: transcript, OCR, frame descriptions, scene changes.\nJIT enrichment: describes frames on demand if not cached.',
   chapters: 'video-cli chapters <video-id>\n\nSemantic chapter segmentation based on transcript + visual cues.\nReturns chapter boundaries with titles and summaries.',
   next: 'video-cli next <video-id> --from <seconds>\n\nFind the next significant moment after a given timestamp.\nUses scene changes, transcript shifts, and visual novelty.',
   grep: 'video-cli grep <video-id> <text>\n\nExact substring search across transcript and OCR text.\nReturns matching segments with timestamps.',
-  frame: 'video-cli frame <video-id> --at <seconds> [--out <path>]\n\nExtract a single frame as JPG at the given timestamp.\nDefaults to writing in the current directory.',
-  clip: 'video-cli clip <video-id> --at <seconds> [--duration N] [--out <path>]\n\nExtract a video clip starting at the given timestamp.\nDefault duration: 10 seconds.',
-  ingest: 'video-cli ingest <file>\n\nProbe video metadata and extract adaptive watchpoint frames.\nFirst step of the pipeline — run before transcribe/analyze.\n\nFlags:\n  --adaptive         Adaptive watchpoint selection (default: true)\n  --watchpoints N    Max watchpoints (default: auto)\n  --scene-threshold  Scene detection threshold (default: 0.35)',
+  frame: 'video-cli frame <video-id> --at <seconds> [--output <path>]\n\nExtract a single frame as JPG at the given timestamp.\nAlias: --out <path>.',
+  clip: 'video-cli clip <video-id> --at <seconds> [--pre N] [--post N] [--duration N] [--output <path>]\n\nExtract a video clip centered on the given timestamp.\nUse --duration as shorthand for a symmetric clip around --at.\nAlias: --out <path>.',
+  ingest: 'video-cli ingest <file>\n\nProbe video metadata and extract adaptive watchpoint frames.\nFirst step of the pipeline - run before transcribe/analyze.\n\nFlags:\n  --adaptive         Adaptive watchpoint selection (default: true)\n  --watchpoints N    Max watchpoints (default: auto)\n  --scene-threshold  Scene detection threshold (default: 0.35)',
   transcribe: 'video-cli transcribe <video-id>\n\nTranscribe audio track using ElevenLabs or Gemini.\nProduces word-level timestamps.',
+  ocr: 'video-cli ocr <video-id>\n\nExtract on-screen text from representative watchpoint frames.',
   analyze: 'video-cli analyze <video-id>\n\nRun OCR + frame description in one pass via Gemini.\nProduces per-frame OCR text and visual descriptions.',
   embed: 'video-cli embed <video-id>\n\nBuild text embeddings for transcript and OCR segments.\nRequired for semantic search.',
+  describe: 'video-cli describe <video-id> [--interval N]\n\nGenerate dense visual descriptions across the video timeline.',
   status: 'video-cli status <video-id>\n\nShow artifact readiness and pipeline completion status.\nLists which steps have been run and what is missing.',
   inspect: 'video-cli inspect <video-id> [--timeline] [--watchpoints]\n\nFull manifest dump for a video.\nOptionally include timeline events or watchpoint details.',
+  timeline: 'video-cli timeline <video-id>\n\nShow watchpoints plus scene-change timestamps.',
+  watchpoints: 'video-cli watchpoints <video-id> [--limit N] [--materialize]\n\nShow raw watchpoints. Use --materialize to also extract frame images.',
+  bundle: 'video-cli bundle <video-id> [--limit N]\n\nBuild an evidence bundle with watchpoints, frame paths, and coverage windows.',
+  brief: 'video-cli brief <video-id> [--limit N] [--output <path>]\n\nWrite a Markdown brief for a video evidence bundle.\nAlias: --out <path>.',
+  list: 'video-cli list\n\nList all ingested videos.',
+  config: 'video-cli config\n\nShow the merged runtime configuration.',
+  install: 'video-cli install --skills\n\nInstall the bundled Claude Code skill for agent integration.',
+  'eval:generate': 'video-cli eval:generate <video-id>\n\nGenerate evaluation queries from descriptions and transcript artifacts.',
+  'eval:run': 'video-cli eval:run <video-id> [--top N]\n\nRun retrieval evaluation against generated query cases.',
 };
 
 // Commands whose first positional is a video-id and can default to VIDEO_CLI_ID
@@ -81,7 +92,7 @@ async function main(argv) {
 
 function printHelp() {
   const lines = [
-    'video-cli \u2014 video REPL for AI agents',
+    'video-cli - video REPL for AI agents',
     '',
     'Quick Start:',
     '  init                            Set up API key (interactive, secure)',
@@ -103,16 +114,25 @@ function printHelp() {
     '',
     'Pipeline (run individually if needed):',
     '  ingest <file>                   Probe video + adaptive watchpoints',
-    '  transcribe <video-id>           Audio \u2192 transcript',
+    '  transcribe <video-id>           Audio -> transcript',
+    '  ocr <video-id>                  OCR representative watchpoint frames',
     '  analyze <video-id>              OCR + describe in one pass (Gemini)',
     '  embed <video-id>                Build embeddings (Gemini)',
+    '  describe <video-id>             Dense visual descriptions across the timeline',
     '',
     'Inspection:',
     '  list                            All ingested videos',
     '  status <video-id>               Artifact readiness + pipeline status',
     '  inspect <video-id>              Full manifest (--timeline, --watchpoints)',
+    '  timeline <video-id>             Watchpoints + scene-change timestamps',
+    '  watchpoints <video-id>          Watchpoint details (--materialize to extract frames)',
+    '  bundle <video-id>               Evidence bundle with coverage windows',
     '  brief <video-id>                Markdown summary',
     '  config                          Current config',
+    '',
+    'Evaluation:',
+    '  eval:generate <video-id>        Generate retrieval eval queries',
+    '  eval:run <video-id>             Run retrieval eval metrics',
     '',
     "Use 'video-cli <command> --help' for details on a specific command.",
   ];
@@ -145,6 +165,9 @@ function parseArgs(argv) {
     }
 
     flags[withoutPrefix] = true;
+    if (withoutPrefix.startsWith('no-') && withoutPrefix.length > 3) {
+      flags[withoutPrefix.slice(3)] = false;
+    }
   }
 
   return { positionals, flags };
@@ -177,6 +200,10 @@ function parseBooleanFlag(flags, name, fallback) {
   const value = flags[name];
   if (value === true) {
     return true;
+  }
+
+  if (value === false) {
+    return false;
   }
 
   const normalized = String(value).trim().toLowerCase();
@@ -252,6 +279,12 @@ async function runCleanup(positionals, flags) {
       console.error(`Removed: ${envPath}`);
     }
 
+    const configPath = path.join(getRepoRoot(), 'video-cli.config.json');
+    if (fs.existsSync(configPath)) {
+      fs.unlinkSync(configPath);
+      console.error(`Removed: ${configPath}`);
+    }
+
     console.error('');
     console.error('All data and credentials removed.');
     console.error('Run "video-cli init" to set up again.');
@@ -260,7 +293,7 @@ async function runCleanup(positionals, flags) {
 
   console.error('Usage:');
   console.error('  video-cli cleanup <video-id>   Remove one video\'s artifacts');
-  console.error('  video-cli cleanup --all        Remove all data + API key');
+  console.error('  video-cli cleanup --all        Remove all data + API key + config');
 }
 
 function printJson(value) {
@@ -281,7 +314,7 @@ async function runInit() {
     return;
   }
 
-  console.error('video-cli init — set up your Gemini API key');
+  console.error('video-cli init - set up your Gemini API key');
   console.error('');
   console.error('Get your key at: https://aistudio.google.com/apikey');
   console.error('');
@@ -337,7 +370,7 @@ async function runInit() {
   }
 
   // Write to .env
-  const lines = existing ? existing.split(/\r?\n/).filter(l => !l.startsWith('GEMINI_API_KEY=')) : [];
+  const lines = existing ? existing.split(/\r?\n/).filter(line => !line.startsWith('GEMINI_API_KEY=')) : [];
   lines.push(`GEMINI_API_KEY=${key}`);
   fs.writeFileSync(envPath, lines.filter(Boolean).join('\n') + '\n');
 

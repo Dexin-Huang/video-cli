@@ -142,8 +142,9 @@ async function runBrief(positionals, flags, _config, { requirePositional, parseN
   const limit = parseNumberFlag(flags, 'limit', 8);
   const manifest = loadManifest(id);
   const bundle = buildEvidenceBundle(manifest, Math.max(1, Math.floor(limit)));
-  const output = flags.output
-    ? path.resolve(String(flags.output))
+  const outputFlag = flags.output ?? flags.out;
+  const output = outputFlag
+    ? path.resolve(String(outputFlag))
     : createArtifactPath(id, '', 'brief.md');
 
   require('node:fs').writeFileSync(output, renderBundleMarkdown(bundle), 'utf8');

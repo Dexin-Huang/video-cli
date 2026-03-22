@@ -1,6 +1,6 @@
 {
   "name": "video-cli",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Local-first video REPL for AI agents — search, ask, navigate, extract",
   "license": "MIT",
   "type": "commonjs",
@@ -36,7 +36,9 @@
     "url": "https://github.com/Dexin-Huang/video-cli"
   },
   "scripts": {
-    "test": "node --test",
+    "test": "node --test --experimental-test-isolation=none",
+    "skills:sync": "node scripts/sync-skill-docs.js",
+    "skills:check": "node scripts/sync-skill-docs.js --check",
     "eval": "node evals/run.js",
     "eval:json": "node evals/run.js --json",
     "goldens:check": "node goldens/validate.js",

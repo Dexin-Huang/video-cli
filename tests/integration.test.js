@@ -8,6 +8,7 @@ const repoRoot = path.resolve(__dirname, '..');
 const cliPath = path.join(repoRoot, 'video-cli.js');
 const tmpRoot = path.join(repoRoot, '.tmp_cli_test');
 const dataRoot = path.join(tmpRoot, 'data', 'videos');
+const canSpawnChildren = canSpawnNodeChildProcess();
 
 test.before(() => {
   fs.rmSync(tmpRoot, { recursive: true, force: true });
@@ -20,7 +21,7 @@ test.after(() => {
   fs.rmSync(dataRoot, { recursive: true, force: true });
 });
 
-test('ingest, list, inspect, frame, and clip work end to end', () => {
+test('ingest, list, inspect, frame, and clip work end to end', { skip: !canSpawnChildren }, () => {
   const config = runCli(['config']);
   assert.equal(config.preset, 'balanced');
   assert.equal(config.ocr.provider, 'gemini');
@@ -140,6 +141,16 @@ function runCli(args) {
   return JSON.parse(result.stdout);
 }
 
+function canSpawnNodeChildProcess() {
+  const result = spawnSync(process.execPath, ['-e', 'process.exit(0)'], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+
+  return !result.error && result.status === 0;
+}
+
 function createSampleVideo(outputPath) {
   const result = spawnSync('ffmpeg', [
     '-y',
@@ -169,4 +180,3 @@ function createSampleVideo(outputPath) {
     throw new Error(result.stderr || result.stdout || 'Failed to create sample video');
   }
 }
-

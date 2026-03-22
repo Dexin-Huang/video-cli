@@ -107,12 +107,18 @@ async function runIngest(positionals, flags, { requirePositional, parseNumberFla
   const resolvedInput = path.resolve(inputFile);
   const adaptive = parseBooleanFlag(flags, 'adaptive', true);
   const sceneThreshold = parseNumberFlag(flags, 'scene-threshold', 0.35);
-  const requestedWatchpoints = parseNumberFlag(flags, 'watchpoints', 12);
+  const requestedWatchpoints = Object.prototype.hasOwnProperty.call(flags, 'watchpoints')
+    ? parseNumberFlag(flags, 'watchpoints', Number.NaN)
+    : null;
 
   const identity = getFileIdentity(resolvedInput);
   const id = buildVideoId(identity);
   const probe = probeVideo(resolvedInput);
   const durationSec = Number(probe.format.duration || 0);
+  const autoWatchpointTarget = Math.max(6, Math.min(24, Math.ceil(Math.max(durationSec, 1) / 30)));
+  const watchpointCap = Number.isFinite(requestedWatchpoints)
+    ? Math.max(1, Math.floor(requestedWatchpoints))
+    : null;
 
   let changePointsSec;
   let watchpoints;
@@ -121,14 +127,18 @@ async function runIngest(positionals, flags, { requirePositional, parseNumberFla
     const sceneScores = detectSceneChangesWithScores(resolvedInput);
     changePointsSec = sceneScores.filter(e => e.score >= sceneThreshold).map(e => e.atSec);
     watchpoints = pickAdaptiveWatchpoints(durationSec, sceneScores, {
-      minCount: Math.max(6, Math.ceil(durationSec / 60)),
-      maxCount: Math.max(requestedWatchpoints, Math.ceil(durationSec / 15)),
+      minCount: watchpointCap === null
+        ? Math.max(6, Math.ceil(durationSec / 60))
+        : Math.min(watchpointCap, Math.max(3, Math.ceil(durationSec / 60))),
+      maxCount: watchpointCap === null
+        ? Math.max(autoWatchpointTarget, Math.ceil(durationSec / 15))
+        : watchpointCap,
       sigmaMultiplier: 1.0,
       minGapSec: 3,
     });
   } else {
     changePointsSec = detectSceneChanges(resolvedInput, sceneThreshold);
-    watchpoints = pickWatchpoints(durationSec, changePointsSec, requestedWatchpoints);
+    watchpoints = pickWatchpoints(durationSec, changePointsSec, watchpointCap ?? autoWatchpointTarget);
   }
 
   const videoStream = probe.streams.find(stream => stream.codec_type === 'video') || null;

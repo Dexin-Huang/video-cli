@@ -1,17 +1,44 @@
 name: Tests
 on: [push, pull_request]
+concurrency:
+  group: video-cli-tests-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   test:
-    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install ffmpeg
+      - name: Install ffmpeg (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      - name: Run tests
+      - name: Install ffmpeg (Windows)
+        if: matrix.os == 'windows-latest'
+        run: choco install ffmpeg -y
+      - name: Install ffmpeg (macOS)
+        if: matrix.os == 'macos-latest'
+        run: brew install ffmpeg
+      - name: Verify skill docs are in sync
+        run: node scripts/sync-skill-docs.js --check
+      - name: Run tests (Unix)
+        if: matrix.os != 'windows-latest'
         run: npm test
+        env:
+          VIDEO_CLI_MOCK_GEMINI: '1'
+          VIDEO_CLI_MOCK_DEEPGRAM: '1'
+          VIDEO_CLI_MOCK_ELEVENLABS: '1'
+      - name: Run tests (Windows)
+        if: matrix.os == 'windows-latest'
+        run: npm.cmd test
         env:
           VIDEO_CLI_MOCK_GEMINI: '1'
           VIDEO_CLI_MOCK_DEEPGRAM: '1'

@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const { batchAsync, fetchWithRetry, extractGeminiError, guessMimeType } = require('./net');
+const { collectTranscriptEntries } = require('./transcript');
 
 const DEFAULT_MODEL = 'gemini-embedding-2-preview';
 const DEFAULT_DIMENSIONS = 768;
@@ -114,17 +115,21 @@ async function buildEmbeddings({ apiKey, manifest, ocr, transcript, config }) {
 
   const transcriptPending = [];
   if (sources.transcript && transcript && Array.isArray(transcript.items)) {
-    let index = 0;
-    for (const chunk of transcript.items) {
-      for (const utt of (chunk.utterances || [])) {
-        const text = String(utt.transcript || '').trim();
-        if (text) transcriptPending.push({ index: index++, utt, text });
-      }
+    const entries = collectTranscriptEntries(transcript);
+    for (let index = 0; index < entries.length; index += 1) {
+      transcriptPending.push({ index, entry: entries[index], text: entries[index].text });
     }
   }
   await embedBatch(transcriptPending,
     item => embedText({ apiKey, text: item.text, model, taskType, dimensions }),
-    item => ({ source: 'transcript', index: item.index, startSec: item.utt.startSec, endSec: item.utt.endSec, speaker: item.utt.speaker ?? null, text: item.text }));
+    item => ({
+      source: 'transcript',
+      index: item.index,
+      startSec: item.entry.startSec,
+      endSec: item.entry.endSec,
+      speaker: item.entry.speaker ?? null,
+      text: item.text,
+    }));
 
   const ocrPending = [];
   if (sources.ocr && ocr && Array.isArray(ocr.items)) {

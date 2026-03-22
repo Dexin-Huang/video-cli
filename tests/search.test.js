@@ -46,6 +46,32 @@ test('getContext returns utterances and OCR within time window', () => {
   assert.ok(context.ocrItems.length > 0);
 });
 
+test('getContext falls back to transcript segments when utterances are missing', () => {
+  const context = getContext({
+    atSec: 5,
+    windowSec: 5,
+    transcript: {
+      items: [
+        {
+          startSec: 0,
+          endSec: 10,
+          segments: [
+            { startSec: 2, endSec: 4, text: 'segment one' },
+            { startSec: 6, endSec: 8, text: 'segment two' },
+          ],
+        },
+      ],
+    },
+    ocr: null,
+    descriptions: null,
+    manifest: null,
+  });
+
+  assert.equal(context.utterances.length, 2);
+  assert.equal(context.utterances[0].text, 'segment one');
+  assert.equal(context.utterances[1].text, 'segment two');
+});
+
 test('buildChapters creates chapters from manifest', () => {
   const manifest = {
     media: { durationSec: 100 },

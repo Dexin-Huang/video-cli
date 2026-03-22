@@ -15,8 +15,9 @@ async function runFrame(positionals, flags, _config, { requirePositional, parseN
   }
 
   const manifest = loadManifest(id);
-  const output = flags.output
-    ? path.resolve(String(flags.output))
+  const outputFlag = flags.output ?? flags.out;
+  const output = outputFlag
+    ? path.resolve(String(outputFlag))
     : createArtifactPath(id, 'frames', `frame-${formatSecondsForFile(atSec)}.jpg`);
 
   extractFrame(manifest.sourcePath, atSec, output);
@@ -30,16 +31,29 @@ async function runFrame(positionals, flags, _config, { requirePositional, parseN
 async function runClip(positionals, flags, _config, { requirePositional, parseNumberFlag, printJson }) {
   const id = requirePositional(positionals, 0, '<video-id>');
   const atSec = parseNumberFlag(flags, 'at', Number.NaN);
-  const preSec = parseNumberFlag(flags, 'pre', 5);
-  const postSec = parseNumberFlag(flags, 'post', 5);
+  const hasPre = Object.prototype.hasOwnProperty.call(flags, 'pre');
+  const hasPost = Object.prototype.hasOwnProperty.call(flags, 'post');
+  const hasDuration = Object.prototype.hasOwnProperty.call(flags, 'duration');
+  let preSec = parseNumberFlag(flags, 'pre', 5);
+  let postSec = parseNumberFlag(flags, 'post', 5);
+
+  if (hasDuration && !hasPre && !hasPost) {
+    const durationSec = parseNumberFlag(flags, 'duration', Number.NaN);
+    if (durationSec <= 0) {
+      throw new Error('Invalid numeric value for --duration');
+    }
+    preSec = durationSec / 2;
+    postSec = durationSec / 2;
+  }
 
   if (!Number.isFinite(atSec)) {
     throw new Error('Missing required numeric flag: --at');
   }
 
   const manifest = loadManifest(id);
-  const output = flags.output
-    ? path.resolve(String(flags.output))
+  const outputFlag = flags.output ?? flags.out;
+  const output = outputFlag
+    ? path.resolve(String(outputFlag))
     : createArtifactPath(id, 'clips', `clip-${formatSecondsForFile(atSec)}.mp4`);
 
   extractClip(manifest, atSec, preSec, postSec, output);

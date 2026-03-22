@@ -174,10 +174,6 @@ Return ONLY the JSON array, no other text.`;
 async function jitEnrich({ id, manifest, descriptions, startSec, endSec, model }) {
   if (!manifest.sourcePath || !fs.existsSync(manifest.sourcePath)) return descriptions;
 
-  const hasCoverage = descriptions && Array.isArray(descriptions.items) &&
-    descriptions.items.some(d => d.atSec >= startSec && d.atSec <= endSec);
-  if (hasCoverage) return descriptions;
-
   const apiKey = process.env.GEMINI_API_KEY || null;
   const descModel = model || 'gemini-3.1-flash-lite-preview';
 

@@ -46,26 +46,56 @@ function detectSceneChangesWithScores(filePath, threshold) {
   const nullSink = os.platform() === 'win32' ? 'NUL' : '/dev/null';
   const result = runProcess('ffmpeg', [
     '-hide_banner', '-i', filePath,
-    '-filter:v', `select='gt(scene,${t})',showinfo`,
-    '-vsync', 'vfr', '-f', 'null', nullSink,
+    '-filter:v', `select='gt(scene,${t})',metadata=print`,
+    '-an', '-f', 'null', nullSink,
   ], { allowFailure: true });
 
+  return parseSceneScoreEvents(result.stderr);
+}
+
+function parseSceneScoreEvents(stderr) {
   const seen = new Set();
   const entries = [];
-  for (const m of (result.stderr || '').matchAll(/pts_time:([0-9]+(?:\.[0-9]+)?)/g)) {
-    const atSec = Number(Number(m[1]).toFixed(3));
-    if (!Number.isFinite(atSec)) continue;
-    const key = atSec.toFixed(3);
-    if (seen.has(key)) continue;
+  const lines = String(stderr || '').split(/\r?\n/);
+  let pendingAtSec = null;
+
+  for (const line of lines) {
+    const timeMatch = line.match(/pts_time:([0-9]+(?:\.[0-9]+)?)/);
+    if (timeMatch) {
+      pendingAtSec = Number(Number(timeMatch[1]).toFixed(3));
+    }
+
+    const scoreMatch = line.match(/lavfi\.scene_score=([0-9]+(?:\.[0-9]+)?)/);
+    if (!scoreMatch || !Number.isFinite(pendingAtSec)) {
+      continue;
+    }
+
+    const key = pendingAtSec.toFixed(3);
+    if (seen.has(key)) {
+      pendingAtSec = null;
+      continue;
+    }
+
     seen.add(key);
-    entries.push({ atSec, score: t });
+    entries.push({
+      atSec: pendingAtSec,
+      score: Number(Number(scoreMatch[1]).toFixed(6)),
+    });
+    pendingAtSec = null;
   }
+
   return entries.sort((a, b) => a.atSec - b.atSec);
 }
 
 function pickAdaptiveWatchpoints(durationSec, sceneScores, options = {}) {
-  const minCount = options.minCount || Math.max(6, Math.ceil(durationSec / 30));
-  const maxCount = options.maxCount || Math.max(minCount, Math.ceil(durationSec / 15));
+  const requestedMinCount = Number.isFinite(options.minCount)
+    ? Math.max(1, Math.floor(options.minCount))
+    : Math.max(6, Math.ceil(durationSec / 30));
+  const requestedMaxCount = Number.isFinite(options.maxCount)
+    ? Math.max(1, Math.floor(options.maxCount))
+    : Math.max(requestedMinCount, Math.ceil(durationSec / 15));
+  const maxCount = Math.max(1, requestedMaxCount);
+  const minCount = Math.min(maxCount, Math.max(1, requestedMinCount));
   const sigmaMultiplier = options.sigmaMultiplier || 1.0;
   const minGapSec = options.minGapSec || 3;
 
@@ -437,5 +467,6 @@ module.exports = {
   materializeWatchpoints,
   pickAdaptiveWatchpoints,
   pickWatchpoints,
+  parseSceneScoreEvents,
   probeVideo,
 };

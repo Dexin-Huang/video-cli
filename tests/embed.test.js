@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { cosineSimilarity, embedText, rankBySimilarity } = require('../src/lib/embed');
+const { buildEmbeddings, cosineSimilarity, embedText, rankBySimilarity } = require('../src/lib/embed');
 
 test('cosineSimilarity returns 1 for parallel vectors', () => {
   const a = [1, 2, 3];
@@ -67,6 +67,44 @@ test('mock embedText returns deterministic vectors', async () => {
 
     const sim = cosineSimilarity(v1, v3);
     assert.ok(sim < 0.99, 'Different inputs should produce different vectors');
+  } finally {
+    delete process.env.VIDEO_CLI_MOCK_GEMINI;
+  }
+});
+
+test('buildEmbeddings falls back to transcript segments when utterances are missing', async () => {
+  process.env.VIDEO_CLI_MOCK_GEMINI = '1';
+  try {
+    const items = await buildEmbeddings({
+      apiKey: null,
+      manifest: null,
+      ocr: null,
+      transcript: {
+        items: [
+          {
+            segments: [
+              { startSec: 1, endSec: 2.5, text: 'segment-only transcript' },
+            ],
+          },
+        ],
+      },
+      config: {
+        model: 'mock-model',
+        dimensions: 16,
+        taskTypeDocument: 'RETRIEVAL_DOCUMENT',
+        sources: {
+          transcript: true,
+          ocr: false,
+          frames: false,
+        },
+      },
+    });
+
+    assert.equal(items.length, 1);
+    assert.equal(items[0].source, 'transcript');
+    assert.equal(items[0].text, 'segment-only transcript');
+    assert.equal(items[0].startSec, 1);
+    assert.equal(items[0].endSec, 2.5);
   } finally {
     delete process.env.VIDEO_CLI_MOCK_GEMINI;
   }

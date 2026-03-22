@@ -1,4 +1,5 @@
 const { cosineSimilarity } = require('./embed');
+const { collectTranscriptEntries } = require('./transcript');
 
 const STOP_WORDS = new Set('the and that this with from have are was were for not they what been will when your like just also about into more some very then there here these those would could other than show where which does scene moment visual first after before during being make made'.split(' '));
 
@@ -155,13 +156,14 @@ function getContext({ atSec, windowSec, transcript, ocr, descriptions, manifest 
 
   const utterances = [];
   const audioEvents = [];
+  for (const entry of collectTranscriptEntries(transcript)) {
+    if (entry.endSec > startSec && entry.startSec < endSec) {
+      utterances.push(entry);
+    }
+  }
+
   if (transcript && Array.isArray(transcript.items)) {
     for (const chunk of transcript.items) {
-      for (const utt of (chunk.utterances || [])) {
-        if (utt.endSec > startSec && utt.startSec < endSec) {
-          utterances.push({ startSec: utt.startSec, endSec: utt.endSec, speaker: utt.speaker ?? null, text: utt.transcript });
-        }
-      }
       for (const event of (chunk.audioEvents || [])) {
         if (event.startSec >= startSec && event.startSec <= endSec) audioEvents.push(event);
       }
@@ -205,14 +207,7 @@ function buildChapters({ manifest, transcript, descriptions }) {
   const changePoints = (manifest.sceneDetection && manifest.sceneDetection.changePointsSec) || [];
 
   // Collect all utterances with timestamps
-  const utterances = [];
-  if (transcript && Array.isArray(transcript.items)) {
-    for (const chunk of transcript.items) {
-      for (const utt of (chunk.utterances || [])) {
-        utterances.push({ startSec: utt.startSec, endSec: utt.endSec, text: utt.transcript || '' });
-      }
-    }
-  }
+  const utterances = collectTranscriptEntries(transcript);
 
   // Build chapter boundaries from scene change clusters
   // Group change points that are within 15s of each other
@@ -273,15 +268,16 @@ function findNext({ fromSec, transcript, ocr, descriptions, manifest }) {
   }
 
   // Next utterance start
-  if (transcript && Array.isArray(transcript.items)) {
-    for (const chunk of transcript.items) {
-      for (const utt of (chunk.utterances || [])) {
-        if (utt.startSec > fromSec + 1) {
-          candidates.push({ atSec: utt.startSec, type: 'utterance', text: utt.transcript, endSec: utt.endSec, speaker: utt.speaker ?? null });
-          break;
-        }
-      }
-      if (candidates.some(c => c.type === 'utterance')) break;
+  for (const entry of collectTranscriptEntries(transcript)) {
+    if (entry.startSec > fromSec + 1) {
+      candidates.push({
+        atSec: entry.startSec,
+        type: 'utterance',
+        text: entry.text,
+        endSec: entry.endSec,
+        speaker: entry.speaker ?? null,
+      });
+      break;
     }
   }
 

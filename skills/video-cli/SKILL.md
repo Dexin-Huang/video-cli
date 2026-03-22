@@ -35,7 +35,7 @@ video-cli ask <video-id> <question>
 ### Navigation
 
 ```bash
-video-cli search <video-id> <query> [--top N] [--threshold N] [--hybrid]
+video-cli search <video-id> <query> [--top N]
 # Semantic + lexical + description search. Returns ranked matches.
 
 video-cli context <video-id> --at <seconds> [--window N]
@@ -58,8 +58,8 @@ video-cli grep <video-id> <exact-text>
 video-cli frame <video-id> --at <seconds> [--output <path>]
 # Extract a single frame as JPG.
 
-video-cli clip <video-id> --at <seconds> [--pre N] [--post N] [--output <path>]
-# Extract a short video clip around a timestamp.
+video-cli clip <video-id> --at <seconds> [--pre N] [--post N] [--duration N] [--output <path>]
+# Extract a short video clip around a timestamp. Use --duration for a symmetric clip around --at.
 ```
 
 ### Pipeline

@@ -6,8 +6,10 @@
 git clone https://github.com/Dexin-Huang/video-cli
 cd video-cli
 cp .env.example .env  # add your GEMINI_API_KEY
-npm test              # runs 16 tests, no API calls needed
+npm test              # runs 20 tests, no API calls needed
 ```
+
+Keep [README.md](README.md), [SKILL.md](SKILL.md), and the command help in `src/cli.js` aligned when changing user-facing behavior. Run `npm run skills:check` to verify the installable skill copy is in sync.
 
 ## Adding a Provider
 
@@ -19,5 +21,5 @@ npm test              # runs 16 tests, no API calls needed
 ## Pull Requests
 
 - One change per PR
-- All 16 tests must pass
+- All 20 tests must pass
 - No new npm dependencies without discussion
