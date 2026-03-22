@@ -60,6 +60,7 @@ async function main(argv) {
 
   const helpers = { requirePositional, parseNumberFlag, parseBooleanFlag, printJson };
 
+  if (command === 'init') return runInit();
   if (command === 'ingest') return runIngest(positionals, flags, helpers);
 
   const commands = {
@@ -81,6 +82,7 @@ function printHelp() {
     'video-cli \u2014 video REPL for AI agents',
     '',
     'Quick Start:',
+    '  init                            Set up API key (interactive, secure)',
     '  setup <file>                    Full pipeline: ingest + transcribe + analyze + embed',
     '  ask <video-id> <question>       Answer with grounded citations',
     '',
@@ -186,6 +188,86 @@ function parseBooleanFlag(flags, name, fallback) {
 
 function printJson(value) {
   console.log(JSON.stringify(value, null, 2));
+}
+
+async function runInit() {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const readline = require('node:readline');
+
+  const envPath = path.join(getRepoRoot(), '.env');
+  const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
+
+  if (existing.includes('GEMINI_API_KEY=') && !existing.includes('GEMINI_API_KEY=your-')) {
+    console.error('API key already configured in .env');
+    console.error('To reconfigure, delete the GEMINI_API_KEY line from .env and run init again.');
+    return;
+  }
+
+  console.error('video-cli init — set up your Gemini API key');
+  console.error('');
+  console.error('Get your key at: https://aistudio.google.com/apikey');
+  console.error('');
+
+  const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
+
+  const key = await new Promise(resolve => {
+    // Disable echo for secure input
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(true);
+      let input = '';
+      process.stderr.write('Paste your GEMINI_API_KEY (hidden): ');
+      process.stdin.on('data', chunk => {
+        const ch = chunk.toString();
+        if (ch === '\r' || ch === '\n') {
+          process.stdin.setRawMode(false);
+          process.stderr.write('\n');
+          rl.close();
+          resolve(input.trim());
+        } else if (ch === '\x7f' || ch === '\b') {
+          input = input.slice(0, -1);
+        } else if (ch === '\x03') {
+          process.exit(1);
+        } else {
+          input += ch;
+        }
+      });
+    } else {
+      // Non-TTY (piped input)
+      rl.question('GEMINI_API_KEY: ', answer => { rl.close(); resolve(answer.trim()); });
+    }
+  });
+
+  if (!key) {
+    console.error('No key provided. Aborting.');
+    process.exit(1);
+  }
+
+  // Validate the key with a simple API call
+  console.error('Validating key...');
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`,
+    );
+    if (!response.ok) {
+      console.error('Invalid API key. Check your key and try again.');
+      process.exit(1);
+    }
+    console.error('Key is valid.');
+  } catch {
+    console.error('Could not reach Gemini API. Check your network and try again.');
+    process.exit(1);
+  }
+
+  // Write to .env
+  const lines = existing ? existing.split(/\r?\n/).filter(l => !l.startsWith('GEMINI_API_KEY=')) : [];
+  lines.push(`GEMINI_API_KEY=${key}`);
+  fs.writeFileSync(envPath, lines.filter(Boolean).join('\n') + '\n');
+
+  console.error('');
+  console.error('Done! API key saved to .env');
+  console.error('');
+  console.error('Next: video-cli setup <video-file>');
 }
 
 module.exports = {

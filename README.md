@@ -22,8 +22,8 @@
 ## Quick Start
 
 ```bash
-cp .env.example .env           # add your GEMINI_API_KEY
-node video-cli.js setup video.mp4
+node video-cli.js init                              # set up API key (secure, interactive)
+node video-cli.js setup video.mp4                   # ingest + transcribe + analyze + embed
 node video-cli.js ask <id> "what is the main argument?"
 ```
 
