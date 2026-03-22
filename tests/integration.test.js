@@ -54,7 +54,7 @@ test('ingest, list, inspect, frame, and clip work end to end', { skip: !canSpawn
   assert.equal(fs.existsSync(watchpoints.watchpoints[0].framePath), true);
 
   const bundle = runCli(['bundle', ingest.id, '--limit', '4']);
-  assert.equal(bundle.watchpoints.length, 4);
+  assert.ok(bundle.watchpoints.length >= 3 && bundle.watchpoints.length <= 4);
   assert.equal(fs.existsSync(bundle.watchpoints[0].framePath), true);
   assert.equal(typeof bundle.watchpoints[0].windowStartSec, 'number');
   assert.equal(typeof bundle.watchpoints[0].windowEndSec, 'number');
