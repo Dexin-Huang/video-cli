@@ -6,7 +6,14 @@ The format is based on Keep a Changelog, and this project aims to follow Semanti
 
 ## [Unreleased]
 
-- Release hardening, CLI output contracts, and maintainer-hygiene work in progress.
+- Ongoing polish and maintenance.
+
+## [0.3.0] - 2026-03-22
+
+### Changed
+- Simplified the product around the Gemini-only path for OCR, transcription, embeddings, and ask.
+- Removed bundled Deepgram and ElevenLabs providers from the open-source repo.
+- Kept the shipping repo focused on the product surface by dropping duplicated eval/golden material.
 
 ## [0.2.2] - 2026-03-22
 
