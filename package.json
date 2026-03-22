@@ -13,6 +13,7 @@
   "files": [
     "video-cli.js",
     "src/",
+    "skills/",
     "SKILL.md",
     "README.md",
     ".env.example",

@@ -61,6 +61,7 @@ async function main(argv) {
   const helpers = { requirePositional, parseNumberFlag, parseBooleanFlag, printJson };
 
   if (command === 'init') return runInit();
+  if (command === 'install') return runInstall(flags);
   if (command === 'cleanup') return runCleanup(positionals, flags);
   if (command === 'ingest') return runIngest(positionals, flags, helpers);
 
@@ -84,6 +85,7 @@ function printHelp() {
     '',
     'Quick Start:',
     '  init                            Set up API key (interactive, secure)',
+    '  install --skills                Install Claude Code skill for agent use',
     '  cleanup [video-id] [--all]      Remove artifacts, data, or everything',
     '  setup <file>                    Full pipeline: ingest + transcribe + analyze + embed',
     '  ask <video-id> <question>       Answer with grounded citations',
@@ -186,6 +188,34 @@ function parseBooleanFlag(flags, name, fallback) {
   }
 
   throw new Error(`Invalid boolean value for --${name}: ${flags[name]}`);
+}
+
+async function runInstall(flags) {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const os = require('node:os');
+
+  if (!flags.skills) {
+    console.error('Usage: video-cli install --skills');
+    console.error('  Installs the Claude Code skill for agent integration.');
+    return;
+  }
+
+  const skillSource = path.join(__dirname, '..', 'skills', 'video-cli');
+  const skillDest = path.join(os.homedir(), '.claude', 'skills', 'video-cli');
+
+  if (!fs.existsSync(skillSource)) {
+    console.error('Skill files not found. Reinstall video-cli: npm install -g video-cli');
+    process.exit(1);
+  }
+
+  fs.mkdirSync(skillDest, { recursive: true });
+  for (const file of fs.readdirSync(skillSource)) {
+    fs.copyFileSync(path.join(skillSource, file), path.join(skillDest, file));
+  }
+
+  console.error('Installed video-cli skill to ' + skillDest);
+  console.error('Claude Code will discover it automatically on next launch.');
 }
 
 async function runCleanup(positionals, flags) {
