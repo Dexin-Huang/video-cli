@@ -1,4 +1,4 @@
-const { ensureDataRoot, getRepoRoot } = require('./lib/store');
+const { ensureDataRoot, getRepoRoot, isDevMode } = require('./lib/store');
 const { getRuntimeConfig } = require('./lib/config');
 
 const { runSetup, runAnalyze } = require('./commands/setup');
@@ -266,6 +266,8 @@ async function runCleanup(positionals, flags) {
   }
 
   if (all) {
+    const os = require('node:os');
+
     // Remove everything: data, .env, config
     const dataRoot = getDataRoot();
     if (fs.existsSync(dataRoot)) {
@@ -273,16 +275,24 @@ async function runCleanup(positionals, flags) {
       console.error(`Removed: ${dataRoot}`);
     }
 
-    const envPath = path.join(getRepoRoot(), '.env');
-    if (fs.existsSync(envPath)) {
-      fs.unlinkSync(envPath);
-      console.error(`Removed: ${envPath}`);
-    }
+    if (isDevMode()) {
+      const envPath = path.join(getRepoRoot(), '.env');
+      if (fs.existsSync(envPath)) {
+        fs.unlinkSync(envPath);
+        console.error(`Removed: ${envPath}`);
+      }
 
-    const configPath = path.join(getRepoRoot(), 'video-cli.config.json');
-    if (fs.existsSync(configPath)) {
-      fs.unlinkSync(configPath);
-      console.error(`Removed: ${configPath}`);
+      const configPath = path.join(getRepoRoot(), 'video-cli.config.json');
+      if (fs.existsSync(configPath)) {
+        fs.unlinkSync(configPath);
+        console.error(`Removed: ${configPath}`);
+      }
+    } else {
+      const homeCli = path.join(os.homedir(), '.video-cli');
+      if (fs.existsSync(homeCli)) {
+        fs.rmSync(homeCli, { recursive: true, force: true });
+        console.error(`Removed: ${homeCli}`);
+      }
     }
 
     console.error('');
@@ -303,9 +313,12 @@ function printJson(value) {
 async function runInit() {
   const fs = require('node:fs');
   const path = require('node:path');
+  const os = require('node:os');
   const readline = require('node:readline');
 
-  const envPath = path.join(getRepoRoot(), '.env');
+  const envDir = isDevMode() ? getRepoRoot() : path.join(os.homedir(), '.video-cli');
+  fs.mkdirSync(envDir, { recursive: true });
+  const envPath = path.join(envDir, '.env');
   const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
 
   if (existing.includes('GEMINI_API_KEY=') && !existing.includes('GEMINI_API_KEY=your-')) {

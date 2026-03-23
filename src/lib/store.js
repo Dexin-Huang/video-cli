@@ -1,15 +1,23 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
 
 function getRepoRoot() {
   return path.resolve(__dirname, '..', '..');
+}
+
+function isDevMode() {
+  return fs.existsSync(path.join(getRepoRoot(), '.git'));
 }
 
 function getDataRoot() {
   if (process.env.VIDEO_CLI_DATA_ROOT) {
     return path.resolve(process.env.VIDEO_CLI_DATA_ROOT);
   }
-  return path.join(getRepoRoot(), 'data', 'videos');
+  if (isDevMode()) {
+    return path.join(getRepoRoot(), 'data', 'videos');
+  }
+  return path.join(os.homedir(), '.video-cli', 'data', 'videos');
 }
 
 function ensureDataRoot() {
@@ -64,6 +72,7 @@ module.exports = {
   ensureDataRoot,
   getDataRoot,
   getRepoRoot,
+  isDevMode,
   listManifests,
   loadManifest,
   saveManifest,
